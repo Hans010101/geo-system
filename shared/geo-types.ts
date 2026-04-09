@@ -88,7 +88,7 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
 // Bailian (阿里百炼) model names — used when baseUrl contains dashscope/bailian
 export const PLATFORM_BAILIAN_MODELS: Partial<Record<Platform, string>> = {
   doubao: "doubao-1.5-pro-32k",
-  deepseek: "deepseek-v3",
+  deepseek: "deepseek-v3.1",
   kimi: "moonshot-v1-auto",
   tongyi: "qwen-plus",
   zhipu: "glm-4-plus",
