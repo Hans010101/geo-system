@@ -1,4 +1,4 @@
-// Platform types - expanded to cover 18 mainstream AI platforms
+// Platform types - 15 mainstream AI platforms
 export const PLATFORMS = [
   "chatgpt",
   "perplexity",
@@ -12,12 +12,9 @@ export const PLATFORMS = [
   "minimax",
   "tongyi",
   "zhipu",
-  "baichuan",
-  "mistral",
   "grok",
   "llama",
   "hunyuan",
-  "tiangong",
 ] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
@@ -34,12 +31,9 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   minimax: "MiniMax",
   tongyi: "通义千问",
   zhipu: "智谱清言",
-  baichuan: "百川",
-  mistral: "Mistral",
   grok: "Grok",
   llama: "Llama",
   hunyuan: "混元",
-  tiangong: "天工",
 };
 
 export const PLATFORM_COLORS: Record<Platform, string> = {
@@ -55,12 +49,9 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
   minimax: "#ec4899",
   tongyi: "#7c3aed",
   zhipu: "#059669",
-  baichuan: "#dc2626",
-  mistral: "#f59e0b",
   grok: "#000000",
   llama: "#3b82f6",
   hunyuan: "#14b8a6",
-  tiangong: "#8b5cf6",
 };
 
 // OpenRouter model mapping for each platform
@@ -77,12 +68,9 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   minimax: "minimax/minimax-m1",
   tongyi: "qwen/qwen-plus",
   zhipu: "zhipu/glm-4-plus",
-  baichuan: "baichuan/baichuan4",
-  mistral: "mistralai/mistral-large-latest",
   grok: "x-ai/grok-3",
   llama: "meta-llama/llama-4-maverick",
   hunyuan: "tencent/hunyuan-turbos-latest",
-  tiangong: "kunlun/skywork-o1-open-llama-3.1-8b",
 };
 
 // Bailian (阿里百炼) model names — used when baseUrl contains dashscope/bailian
@@ -94,7 +82,6 @@ export const PLATFORM_BAILIAN_MODELS: Partial<Record<Platform, string>> = {
   zhipu: "glm-4-plus",
   minimax: "minimax-01",
   wenxin: "ernie-4.0-turbo-128k",
-  baichuan: "baichuan4",
   gemini: "gemini-2.0-flash",
 };
 

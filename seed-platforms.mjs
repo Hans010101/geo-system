@@ -25,12 +25,9 @@ const platforms = [
   { platform: "minimax", displayName: "MiniMax", isEnabled: true, modelVersion: "minimax-m1", collectFrequency: "weekly" },
   { platform: "tongyi", displayName: "通义千问", isEnabled: true, modelVersion: "qwen-plus", collectFrequency: "weekly" },
   { platform: "zhipu", displayName: "智谱清言", isEnabled: true, modelVersion: "glm-4-plus", collectFrequency: "weekly" },
-  { platform: "baichuan", displayName: "百川", isEnabled: false, modelVersion: "baichuan4", collectFrequency: "weekly" },
-  { platform: "mistral", displayName: "Mistral", isEnabled: false, modelVersion: "mistral-large", collectFrequency: "weekly" },
   { platform: "grok", displayName: "Grok", isEnabled: true, modelVersion: "grok-3", collectFrequency: "weekly" },
   { platform: "llama", displayName: "Llama", isEnabled: false, modelVersion: "llama-4-maverick", collectFrequency: "weekly" },
   { platform: "hunyuan", displayName: "混元", isEnabled: false, modelVersion: "hunyuan-turbo", collectFrequency: "weekly" },
-  { platform: "tiangong", displayName: "天工", isEnabled: false, modelVersion: "skywork-o1", collectFrequency: "weekly" },
 ];
 
 for (const p of platforms) {
