@@ -36,6 +36,13 @@
       "when": 1775722683503,
       "tag": "0004_abnormal_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1775733303975,
+      "tag": "0005_nifty_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

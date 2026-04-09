@@ -1,3 +1,4 @@
+import { useRole } from "@/hooks/useRole";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
 } from "@shared/geo-types";
 
 export default function ConfigQuestions() {
+  const { canEdit } = useRole();
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [dimFilter, setDimFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -104,12 +106,14 @@ export default function ConfigQuestions() {
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              新增问题
-            </Button>
-          </DialogTrigger>
+          {canEdit && (
+            <DialogTrigger asChild>
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4 mr-2" />
+                新增问题
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingQuestion ? "编辑问题" : "新增问题"}</DialogTitle>
@@ -273,23 +277,25 @@ export default function ConfigQuestions() {
                     </div>
                     <p className="text-sm">{q.text}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(q)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => {
-                        if (confirm("确定删除此问题？")) {
-                          deleteMutation.mutate({ questionId: q.questionId });
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {canEdit && (
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(q)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm("确定删除此问题？")) {
+                            deleteMutation.mutate({ questionId: q.questionId });
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

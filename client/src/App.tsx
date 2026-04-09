@@ -18,6 +18,7 @@ import ConfigOurContent from "./pages/ConfigOurContent";
 import ConfigPlatforms from "./pages/ConfigPlatforms";
 import ConfigCollection from "./pages/ConfigCollection";
 import ConfigScheduler from "./pages/ConfigScheduler";
+import ConfigUsers from "./pages/ConfigUsers";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function Router() {
         <Route path="/config/platforms" component={ConfigPlatforms} />
         <Route path="/config/collection" component={ConfigCollection} />
         <Route path="/config/scheduler" component={ConfigScheduler} />
+        <Route path="/config/users" component={ConfigUsers} />
         <Route component={NotFound} />
       </Switch>
     </DashboardLayout>

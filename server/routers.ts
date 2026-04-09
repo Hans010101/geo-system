@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, adminProcedure, developerProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -1313,6 +1313,39 @@ async function initScheduler() {
   }
 })();
 
+// ==================== Users Router (developer only) ====================
+const usersRouter = router({
+  list: developerProcedure.query(async () => {
+    const all = await db.listUsers();
+    // Strip passwordHash from response
+    return all.map(({ passwordHash, ...rest }) => rest);
+  }),
+
+  updateRole: developerProcedure
+    .input(z.object({
+      id: z.number(),
+      role: z.enum(["user", "admin"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const target = await db.getUserById(input.id);
+      if (!target) throw new Error("User not found");
+      if (target.role === "developer") throw new Error("Cannot modify developer role");
+      await db.updateUserRole(input.id, input.role);
+      return { success: true };
+    }),
+
+  delete: developerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const target = await db.getUserById(input.id);
+      if (!target) throw new Error("User not found");
+      if (target.role === "developer") throw new Error("Cannot delete developer");
+      if (target.id === ctx.user.id) throw new Error("Cannot delete yourself");
+      await db.deleteUser(input.id);
+      return { success: true };
+    }),
+});
+
 // ==================== App Router ====================
 export const appRouter = router({
   system: systemRouter,
@@ -1336,6 +1369,7 @@ export const appRouter = router({
   weeklyReports: weeklyReportsRouter,
   urlMatchRules: urlMatchRulesRouter,
   scheduler: schedulerRouter,
+  users: usersRouter,
 });
 
 export type AppRouter = typeof appRouter;

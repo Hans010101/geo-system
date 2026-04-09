@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { Clock, Play, Settings, Loader2, Calendar, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { useRole } from "@/hooks/useRole";
 
 const CRON_PRESETS = [
   { label: "每天 8:00", value: "0 8 * * *", desc: "每天早上8点执行" },
@@ -18,6 +19,7 @@ const CRON_PRESETS = [
 ];
 
 export default function ConfigScheduler() {
+  const { canEdit } = useRole();
   const { data: config, isLoading, refetch } = trpc.scheduler.getConfig.useQuery();
   const updateMutation = trpc.scheduler.updateConfig.useMutation({
     onSuccess: () => {
@@ -169,6 +171,7 @@ export default function ConfigScheduler() {
           </div>
 
           {/* Save Button */}
+          {canEdit && (
           <div className="flex justify-end pt-2">
             <Button onClick={handleSave} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? (
@@ -179,6 +182,7 @@ export default function ConfigScheduler() {
               保存配置
             </Button>
           </div>
+          )}
         </CardContent>
       </Card>
 

@@ -50,10 +50,12 @@ import {
   TONE_LABELS,
   type Platform,
 } from "@shared/geo-types";
+import { useRole } from "@/hooks/useRole";
 
 type StatusFilter = "all" | "success" | "pending" | "failed";
 
 export default function ConfigCollection() {
+  const { canEdit } = useRole();
   const [selectedQuestion, setSelectedQuestion] = useState<string>("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
@@ -296,6 +298,7 @@ export default function ConfigCollection() {
                     </SelectContent>
                   </Select>
                 </div>
+                {canEdit && (
                 <Button
                   className="w-full"
                   onClick={handleSingleTrigger}
@@ -308,6 +311,7 @@ export default function ConfigCollection() {
                   )}
                   {triggerMutation.isPending ? "采集中..." : "开始采集"}
                 </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -370,6 +374,7 @@ export default function ConfigCollection() {
                 <p className="text-xs text-muted-foreground">
                   将对所有活跃问题在所有启用的平台上执行一次采集，采集将在后台并发执行（默认并发数5）
                 </p>
+                {canEdit && (
                 <Button
                   className="w-full"
                   variant="outline"
@@ -383,6 +388,7 @@ export default function ConfigCollection() {
                   )}
                   {activeBatchId ? "执行中..." : "开始批量采集"}
                 </Button>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -426,6 +432,7 @@ export default function ConfigCollection() {
                   <span className="text-sm font-medium text-primary">
                     已选 {selectedIds.size} 条
                   </span>
+                  {canEdit && (
                   <div className="flex gap-2 ml-auto">
                     <Button
                       size="sm"
@@ -448,6 +455,7 @@ export default function ConfigCollection() {
                       批量删除
                     </Button>
                   </div>
+                  )}
                 </div>
               )}
             </CardHeader>

@@ -26,11 +26,13 @@ import { toast } from "sonner";
 import {
   PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_OPENROUTER_MODELS, type Platform,
 } from "@shared/geo-types";
+import { useRole } from "@/hooks/useRole";
 
 // All known platforms for coverage selector
 const ALL_PLATFORMS_LIST = PLATFORMS as unknown as Platform[];
 
 export default function ConfigPlatforms() {
+  const { canEdit } = useRole();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<any>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -184,10 +186,12 @@ export default function ConfigPlatforms() {
             <TabsTrigger value="intl">国际 ({configuredPlatforms.filter(p => intlPlatforms.includes(p)).length})</TabsTrigger>
           </TabsList>
         </Tabs>
+        {canEdit && (
         <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5">
           <Plus className="h-4 w-4" />
           添加平台
         </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -219,11 +223,13 @@ export default function ConfigPlatforms() {
                         <p className="text-[10px] text-muted-foreground">{platform}</p>
                       </div>
                     </div>
+                    {canEdit && (
                     <Switch
                       checked={isEnabled}
                       onCheckedChange={() => handleToggle(platform, isEnabled)}
                       disabled={upsertMutation.isPending}
                     />
+                    )}
                   </div>
 
                   <div className="space-y-1.5 text-xs">
@@ -250,6 +256,7 @@ export default function ConfigPlatforms() {
                     </div>
                   </div>
 
+                  {canEdit && (
                   <div className="flex gap-2 mt-3">
                     <Button
                       variant="outline"
@@ -269,6 +276,7 @@ export default function ConfigPlatforms() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -427,6 +435,7 @@ function GlobalApiKeysSheet({
   globalKeysList: any[];
   allPlatforms: string[];
 }) {
+  const { canEdit } = useRole();
   const utils = trpc.useUtils();
   const [editingKey, setEditingKey] = useState<any>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -515,6 +524,7 @@ function GlobalApiKeysSheet({
                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: key.isActive ? "#22c55e" : "#9ca3af" }} />
                     <h4 className="font-semibold text-sm">{key.name}</h4>
                   </div>
+                  {canEdit && (
                   <div className="flex items-center gap-1">
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleEdit(key)}>
                       编辑
@@ -528,6 +538,7 @@ function GlobalApiKeysSheet({
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  )}
                 </div>
                 <div className="text-xs space-y-1">
                   <div className="flex gap-2">
@@ -558,7 +569,7 @@ function GlobalApiKeysSheet({
           ))}
 
           {/* Add new key button */}
-          {globalKeysList.length < 4 && !editingKey && (
+          {canEdit && globalKeysList.length < 4 && !editingKey && (
             <Button variant="outline" className="w-full gap-2" onClick={handleNew}>
               <Plus className="h-4 w-4" />
               添加全局 API Key（{globalKeysList.length}/4）
@@ -657,11 +668,13 @@ function GlobalApiKeysSheet({
                     <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => setEditingKey(null)}>
                       取消
                     </Button>
+                    {canEdit && (
                     <Button type="submit" size="sm" className="flex-1" disabled={upsertMutation.isPending}>
                       {upsertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                         <><Check className="h-4 w-4 mr-1" />保存</>
                       )}
                     </Button>
+                    )}
                   </div>
                 </form>
               </CardContent>

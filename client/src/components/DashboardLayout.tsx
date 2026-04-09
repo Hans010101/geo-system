@@ -34,6 +34,7 @@ import {
   ListChecks,
   Activity,
   Clock,
+  Users,
 } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -350,6 +351,19 @@ function DashboardLayoutContent({
                     </SidebarMenuItem>
                   );
                 })}
+                {user?.role === "developer" && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      isActive={location === "/config/users"}
+                      onClick={() => setLocation("/config/users")}
+                      tooltip="用户管理"
+                      className="h-9 transition-all font-normal text-sm"
+                    >
+                      <Users className={`h-4 w-4 ${location === "/config/users" ? "text-sidebar-primary" : ""}`} />
+                      <span>用户管理</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </div>
           </SidebarContent>
@@ -369,11 +383,13 @@ function DashboardLayoutContent({
                         {user?.name || "-"}
                       </p>
                       <span className={`inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium leading-none shrink-0 ${
-                        user?.role === "admin"
-                          ? "bg-primary/20 text-primary"
-                          : "bg-sidebar-accent text-sidebar-foreground/60"
+                        user?.role === "developer"
+                          ? "bg-primary/30 text-primary"
+                          : user?.role === "admin"
+                            ? "bg-primary/20 text-primary"
+                            : "bg-sidebar-accent text-sidebar-foreground/60"
                       }`}>
-                        {user?.role === "admin" ? "管理员" : "成员"}
+                        {user?.role === "developer" ? "开发者" : user?.role === "admin" ? "管理员" : "成员"}
                       </span>
                     </div>
                     <p className="text-xs text-sidebar-foreground/50 truncate mt-1">

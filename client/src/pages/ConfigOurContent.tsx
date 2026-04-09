@@ -18,8 +18,10 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2, Link2, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CONTENT_TYPE_LABELS } from "@shared/geo-types";
+import { useRole } from "@/hooks/useRole";
 
 export default function ConfigOurContent() {
+  const { canEdit } = useRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -116,6 +118,7 @@ export default function ConfigOurContent() {
           </p>
         </div>
         <div className="flex gap-2">
+          {canEdit && (
           <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -146,7 +149,9 @@ export default function ConfigOurContent() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
 
+          {canEdit && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
@@ -196,6 +201,7 @@ export default function ConfigOurContent() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -248,6 +254,7 @@ export default function ConfigOurContent() {
                       </Badge>
                     </div>
                   </div>
+                  {canEdit && (
                   <div className="flex gap-1 shrink-0">
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true); }}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -263,6 +270,7 @@ export default function ConfigOurContent() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
