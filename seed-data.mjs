@@ -17,6 +17,8 @@ const platformConfigs = [
   { platform: "wenxin", displayName: "文心一言", isEnabled: true, modelVersion: "ernie-4.0", collectFrequency: "weekly" },
   { platform: "claude", displayName: "Claude", isEnabled: true, modelVersion: "claude-3.5-sonnet", collectFrequency: "weekly" },
   { platform: "copilot", displayName: "Copilot", isEnabled: true, modelVersion: "default", collectFrequency: "weekly" },
+  { platform: "baichuan", displayName: "百川", isEnabled: false, modelVersion: "baichuan4", collectFrequency: "weekly" },
+  { platform: "tiangong", displayName: "天工", isEnabled: false, modelVersion: "default", collectFrequency: "weekly" },
 ];
 
 for (const config of platformConfigs) {
