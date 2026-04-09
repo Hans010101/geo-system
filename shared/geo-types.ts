@@ -85,6 +85,19 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   tiangong: "kunlun/skywork-o1-open-llama-3.1-8b",
 };
 
+// Bailian (阿里百炼) model names — used when baseUrl contains dashscope/bailian
+export const PLATFORM_BAILIAN_MODELS: Partial<Record<Platform, string>> = {
+  doubao: "doubao-1.5-pro-32k",
+  deepseek: "deepseek-v3",
+  kimi: "moonshot-v1-auto",
+  tongyi: "qwen-plus",
+  zhipu: "glm-4-plus",
+  minimax: "minimax-01",
+  wenxin: "ernie-4.0-turbo-128k",
+  baichuan: "baichuan4",
+  gemini: "gemini-2.0-flash",
+};
+
 // Brand line types
 export const BRAND_LINES = ["sun_yuchen", "tron", "competitor"] as const;
 export type BrandLine = (typeof BRAND_LINES)[number];

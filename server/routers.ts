@@ -6,7 +6,8 @@ import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
 import { nanoid } from "nanoid";
-import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, type Platform } from "@shared/geo-types";
+import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, type Platform } from "@shared/geo-types";
+import { ENV } from "./_core/env";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -43,22 +44,35 @@ function isCancelled(id: number): boolean {
   return cancelledIds.has(id);
 }
 
+// ==================== Model Name Resolution ====================
+// Pick the correct model name based on which API provider is being used
+function resolveModelForBaseUrl(platform: string, baseUrl: string, platformModelOverride?: string | null): string {
+  if (platformModelOverride) return platformModelOverride;
+  const p = platform as Platform;
+  if (baseUrl.includes("dashscope.aliyuncs.com") || baseUrl.includes("bailian")) {
+    return PLATFORM_BAILIAN_MODELS[p] || PLATFORM_OPENROUTER_MODELS[p] || "qwen-plus";
+  }
+  if (baseUrl.includes("openrouter.ai")) {
+    return PLATFORM_OPENROUTER_MODELS[p] || "openai/gpt-4o";
+  }
+  // Unknown provider — try OpenRouter format as default
+  return PLATFORM_OPENROUTER_MODELS[p] || "openai/gpt-4o";
+}
+
 // ==================== Global API Key Resolution ====================
-// Priority: platformConfig own key > globalApiKeys (coveredPlatforms match)
-// No more env variable or built-in LLM fallback
+// Priority: platform own key > global key (coveredPlatforms) > env OpenRouter > error
 async function resolveApiConfig(platform: string): Promise<{
   apiKey: string | null;
   baseUrl: string | null;
   model: string;
-  source: "platform" | "global" | "none";
+  source: "platform" | "global" | "env" | "none";
 }> {
   const platformConfig = await db.getPlatformConfig(platform);
-  const model = platformConfig?.modelVersion ||
-    PLATFORM_OPENROUTER_MODELS[platform as Platform] ||
-    "openai/gpt-4o";
 
   // 1. Platform's own API key
   if (platformConfig?.apiKeyEncrypted && platformConfig?.apiBaseUrl) {
+    const model = platformConfig.modelVersion ||
+      resolveModelForBaseUrl(platform, platformConfig.apiBaseUrl);
     return {
       apiKey: platformConfig.apiKeyEncrypted,
       baseUrl: platformConfig.apiBaseUrl,
@@ -76,7 +90,9 @@ async function resolveApiConfig(platform: string): Promise<{
     }
     const covered = (gk.coveredPlatforms as string[]) || [];
     if (covered.includes(platform)) {
-      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}"`);
+      const model = platformConfig?.modelVersion ||
+        resolveModelForBaseUrl(platform, gk.baseUrl);
+      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}", model=${model}`);
       return {
         apiKey: gk.apiKey,
         baseUrl: gk.baseUrl,
@@ -86,18 +102,33 @@ async function resolveApiConfig(platform: string): Promise<{
     }
   }
 
+  // 3. Environment variable fallback (OpenRouter)
+  if (ENV.openrouterApiKey) {
+    const model = PLATFORM_OPENROUTER_MODELS[platform as Platform] || "openai/gpt-4o";
+    log.info(`resolveApiConfig: ${platform} using env OpenRouter fallback, model=${model}`);
+    return {
+      apiKey: ENV.openrouterApiKey,
+      baseUrl: ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1",
+      model,
+      source: "env",
+    };
+  }
+
   log.info(`resolveApiConfig: no key found for ${platform}, globalKeys=${globalKeys.length}`);
-  // No API key available
-  return { apiKey: null, baseUrl: null, model, source: "none" };
+  return { apiKey: null, baseUrl: null, model: "openai/gpt-4o", source: "none" };
 }
 
-// Get any active global API key (for analysis/citation extraction)
+// Get any active API key (for analysis/citation extraction)
 async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string } | null> {
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
     if (gk.isActive && gk.apiKey && gk.baseUrl) {
       return { apiKey: gk.apiKey, baseUrl: gk.baseUrl };
     }
+  }
+  // Fallback to env
+  if (ENV.openrouterApiKey) {
+    return { apiKey: ENV.openrouterApiKey, baseUrl: ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1" };
   }
   return null;
 }
