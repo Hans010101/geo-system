@@ -593,6 +593,7 @@ function GlobalApiKeysSheet({
                       placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
                       defaultValue={editingKey.baseUrl || ""}
                       className="h-8 text-sm font-mono"
+                      required
                     />
                     <p className="text-[10px] text-muted-foreground">
                       百炼: https://dashscope.aliyuncs.com/compatible-mode/v1<br />
@@ -600,14 +601,15 @@ function GlobalApiKeysSheet({
                     </p>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">API Key</Label>
+                    <Label className="text-xs">API Key {editingKey.id ? "(留空保持不变)" : ""}</Label>
                     <div className="relative">
                       <Input
                         name="apiKey"
                         type={showApiKey ? "text" : "password"}
-                        placeholder="sk-..."
-                        defaultValue={editingKey.apiKey || ""}
+                        placeholder={editingKey.id ? "留空保持当前 Key 不变" : "sk-..."}
+                        defaultValue=""
                         className="h-8 text-sm font-mono pr-9"
+                        required={!editingKey.id}
                       />
                       <button
                         type="button"

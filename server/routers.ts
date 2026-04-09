@@ -70,9 +70,13 @@ async function resolveApiConfig(platform: string): Promise<{
   // 2. Global API keys - find one that covers this platform
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
-    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) continue;
+    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) {
+      log.info(`Skipping global key "${gk.name}": active=${gk.isActive}, hasKey=${!!gk.apiKey}, hasUrl=${!!gk.baseUrl}`);
+      continue;
+    }
     const covered = (gk.coveredPlatforms as string[]) || [];
     if (covered.includes(platform)) {
+      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}"`);
       return {
         apiKey: gk.apiKey,
         baseUrl: gk.baseUrl,
@@ -82,6 +86,7 @@ async function resolveApiConfig(platform: string): Promise<{
     }
   }
 
+  log.info(`resolveApiConfig: no key found for ${platform}, globalKeys=${globalKeys.length}`);
   // No API key available
   return { apiKey: null, baseUrl: null, model, source: "none" };
 }
@@ -1080,6 +1085,15 @@ const globalApiKeysRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      // When editing an existing key, don't overwrite apiKey/baseUrl with null/empty
+      // (frontend doesn't receive the raw apiKey, so it sends null on edit)
+      if (input.id) {
+        const existing = await db.listGlobalApiKeys().then(keys => keys.find(k => k.id === input.id));
+        if (existing) {
+          if (!input.apiKey) input.apiKey = existing.apiKey;
+          if (!input.baseUrl) input.baseUrl = existing.baseUrl;
+        }
+      }
       await db.upsertGlobalApiKey(input as any);
       return { success: true };
     }),
