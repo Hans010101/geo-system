@@ -35,7 +35,25 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const rawUrl = process.env.DATABASE_URL;
+      // mysql2 URL parser ignores ?socketPath=, so parse it manually
+      const url = new URL(rawUrl);
+      const socketPath = url.searchParams.get("socketPath");
+      if (socketPath) {
+        const mysql2 = await import("mysql2");
+        const pool = mysql2.createPool({
+          host: "localhost",
+          user: decodeURIComponent(url.username),
+          password: decodeURIComponent(url.password),
+          database: url.pathname.slice(1), // remove leading /
+          socketPath,
+          waitForConnections: true,
+          connectionLimit: 10,
+        });
+        _db = drizzle(pool);
+      } else {
+        _db = drizzle(rawUrl);
+      }
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
