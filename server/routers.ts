@@ -1344,6 +1344,25 @@ const usersRouter = router({
       await db.deleteUser(input.id);
       return { success: true };
     }),
+
+  ban: developerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const target = await db.getUserById(input.id);
+      if (!target) throw new Error("User not found");
+      if (target.role === "developer") throw new Error("Cannot ban developer");
+      await db.setUserBanned(input.id, true);
+      return { success: true };
+    }),
+
+  unban: developerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const target = await db.getUserById(input.id);
+      if (!target) throw new Error("User not found");
+      await db.setUserBanned(input.id, false);
+      return { success: true };
+    }),
 });
 
 // ==================== App Router ====================

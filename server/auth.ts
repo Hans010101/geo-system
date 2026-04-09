@@ -119,8 +119,12 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
 
-      // Check if username/email already exists
+      // Check if username/email already exists or is banned
       const existing = await db.getUserByOpenId(username);
+      if (existing?.isBanned) {
+        res.status(403).json({ error: "该账号已被禁用，请联系管理员" });
+        return;
+      }
       if (existing) {
         if (username.includes("@")) {
           res.status(409).json({ error: "该邮箱已被注册" });
@@ -176,6 +180,11 @@ export function registerAuthRoutes(app: Express) {
       const user = await db.getUserByOpenId(username);
       if (!user || !user.passwordHash) {
         res.status(401).json({ error: "用户名或密码错误" });
+        return;
+      }
+
+      if (user.isBanned) {
+        res.status(403).json({ error: "该账号已被禁用，请联系管理员" });
         return;
       }
 
@@ -276,6 +285,12 @@ export function registerAuthRoutes(app: Express) {
       if (!user) {
         // No existing user with this email — also check google: prefixed openId
         user = await db.getUserByOpenId(`google:${googleUser.email}`);
+      }
+
+      // Check if user is banned
+      if (user?.isBanned) {
+        res.status(403).send("该账号已被禁用，请联系管理员");
+        return;
       }
 
       if (!user) {

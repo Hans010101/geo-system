@@ -136,6 +136,12 @@ export async function getUserById(id: number) {
   return result[0];
 }
 
+export async function setUserBanned(id: number, isBanned: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ isBanned }).where(eq(users.id, id));
+}
+
 // ==================== Questions Helpers ====================
 export async function listQuestions(filters?: {
   brandLine?: string;
