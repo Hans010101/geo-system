@@ -129,8 +129,8 @@ export default function Home() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">GEO 系统总览</h1>
-          <p className="text-muted-foreground text-sm mt-1">生成式引擎优化监测系统</p>
+          <h1 className="text-2xl font-bold tracking-tight">TRON GEO 系统总览</h1>
+          <p className="text-muted-foreground text-sm mt-1">TRON 生成式引擎优化监测系统</p>
         </div>
         <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
           <SelectTrigger className="w-[140px]">

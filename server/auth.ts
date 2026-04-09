@@ -80,6 +80,21 @@ export async function authenticateRequest(req: Request): Promise<User | null> {
   return user;
 }
 
+// ==================== Helpers ====================
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function isFirstUser(): Promise<boolean> {
+  const database = await db.getDb();
+  if (!database) return false;
+  const { count } = await import("drizzle-orm");
+  const { users } = await import("../drizzle/schema");
+  const result = await database.select({ count: count() }).from(users);
+  return (result[0]?.count ?? 0) === 0;
+}
+
 // ==================== Auth Routes (Express) ====================
 
 export function registerAuthRoutes(app: Express) {
@@ -88,43 +103,43 @@ export function registerAuthRoutes(app: Express) {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
-        res.status(400).json({ error: "username and password are required" });
+        res.status(400).json({ error: "请输入用户名和密码" });
         return;
       }
       if (typeof username !== "string" || typeof password !== "string") {
-        res.status(400).json({ error: "invalid input" });
+        res.status(400).json({ error: "输入格式无效" });
+        return;
+      }
+      if (username.includes("@") && !isValidEmail(username)) {
+        res.status(400).json({ error: "请输入有效的邮箱地址" });
         return;
       }
       if (password.length < 6) {
-        res.status(400).json({ error: "password must be at least 6 characters" });
+        res.status(400).json({ error: "密码至少需要 6 个字符" });
         return;
       }
 
-      // Check if username already exists (use username as openId)
+      // Check if username/email already exists
       const existing = await db.getUserByOpenId(username);
       if (existing) {
-        res.status(409).json({ error: "username already exists" });
+        if (username.includes("@")) {
+          res.status(409).json({ error: "该邮箱已被注册" });
+        } else {
+          res.status(409).json({ error: "该用户名已被注册" });
+        }
         return;
       }
 
       const passwordHashValue = await hashPassword(password);
-
-      // Check if this is the first user — auto-assign admin
-      const database = await db.getDb();
-      let isFirstUser = false;
-      if (database) {
-        const { count } = await import("drizzle-orm");
-        const { users } = await import("../drizzle/schema");
-        const result = await database.select({ count: count() }).from(users);
-        isFirstUser = (result[0]?.count ?? 0) === 0;
-      }
+      const firstUser = await isFirstUser();
 
       await db.upsertUser({
         openId: username,
         name: username,
+        email: username.includes("@") ? username : null,
         passwordHash: passwordHashValue,
         loginMethod: "password",
-        role: isFirstUser ? "admin" : "user",
+        role: firstUser ? "admin" : "user",
         lastSignedIn: new Date(),
       });
 
@@ -133,10 +148,10 @@ export function registerAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.json({ success: true, role: isFirstUser ? "admin" : "user" });
+      res.json({ success: true, role: firstUser ? "admin" : "user" });
     } catch (error: any) {
       console.error("[Auth] Register failed:", error);
-      res.status(500).json({ error: "Registration failed" });
+      res.status(500).json({ error: "注册失败，请稍后再试" });
     }
   });
 
@@ -145,23 +160,22 @@ export function registerAuthRoutes(app: Express) {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
-        res.status(400).json({ error: "username and password are required" });
+        res.status(400).json({ error: "请输入用户名和密码" });
         return;
       }
 
       const user = await db.getUserByOpenId(username);
       if (!user || !user.passwordHash) {
-        res.status(401).json({ error: "invalid username or password" });
+        res.status(401).json({ error: "用户名或密码错误" });
         return;
       }
 
       const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) {
-        res.status(401).json({ error: "invalid username or password" });
+        res.status(401).json({ error: "用户名或密码错误" });
         return;
       }
 
-      // Update lastSignedIn
       await db.upsertUser({ openId: username, lastSignedIn: new Date() });
 
       const sessionToken = await createSessionToken(user.openId, user.name || username);
@@ -171,7 +185,118 @@ export function registerAuthRoutes(app: Express) {
       res.json({ success: true });
     } catch (error: any) {
       console.error("[Auth] Login failed:", error);
-      res.status(500).json({ error: "Login failed" });
+      res.status(500).json({ error: "登录失败，请稍后再试" });
     }
+  });
+
+  // ==================== Google OAuth ====================
+
+  // GET /api/auth/google — redirect to Google consent screen
+  app.get("/api/auth/google", (req: Request, res: Response) => {
+    if (!ENV.googleClientId) {
+      res.status(500).json({ error: "Google OAuth is not configured" });
+      return;
+    }
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: ENV.googleClientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      prompt: "select_account",
+    });
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  });
+
+  // GET /api/auth/google/callback — exchange code for token
+  app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+    try {
+      const code = req.query.code as string;
+      if (!code) {
+        res.status(400).send("Missing authorization code");
+        return;
+      }
+
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+
+      // Exchange code for tokens
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: ENV.googleClientId,
+          client_secret: ENV.googleClientSecret,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const err = await tokenRes.text();
+        console.error("[Google OAuth] Token exchange failed:", err);
+        res.status(500).send("Google login failed");
+        return;
+      }
+
+      const tokens = (await tokenRes.json()) as { access_token: string };
+
+      // Get user info
+      const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+
+      if (!userInfoRes.ok) {
+        res.status(500).send("Failed to get user info from Google");
+        return;
+      }
+
+      const googleUser = (await userInfoRes.json()) as {
+        id: string;
+        email: string;
+        name: string;
+        picture?: string;
+      };
+
+      // Use email as openId for Google users
+      const openId = `google:${googleUser.email}`;
+      let user = await db.getUserByOpenId(openId);
+
+      if (!user) {
+        // Auto-create user; first user is admin
+        const firstUser = await isFirstUser();
+        await db.upsertUser({
+          openId,
+          name: googleUser.name || googleUser.email,
+          email: googleUser.email,
+          loginMethod: "google",
+          role: firstUser ? "admin" : "user",
+          lastSignedIn: new Date(),
+        });
+        user = await db.getUserByOpenId(openId);
+      } else {
+        await db.upsertUser({ openId, lastSignedIn: new Date() });
+      }
+
+      if (!user) {
+        res.status(500).send("Failed to create user");
+        return;
+      }
+
+      const sessionToken = await createSessionToken(user.openId, user.name || googleUser.email);
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      res.redirect("/");
+    } catch (error: any) {
+      console.error("[Google OAuth] Callback failed:", error);
+      res.status(500).send("Google login failed");
+    }
+  });
+
+  // GET /api/auth/google/enabled — check if Google OAuth is configured
+  app.get("/api/auth/google/enabled", (_req: Request, res: Response) => {
+    res.json({ enabled: Boolean(ENV.googleClientId && ENV.googleClientSecret) });
   });
 }
