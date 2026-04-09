@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1775559389736,
+      "tag": "0000_clammy_obadiah_stane",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1775559518893,
+      "tag": "0001_overjoyed_midnight",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775568085385,
+      "tag": "0002_sad_sharon_ventura",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775608541522,
+      "tag": "0003_spotty_living_tribunal",
+      "breakpoints": true
+    }
+  ]
+}
