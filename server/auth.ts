@@ -261,13 +261,18 @@ export function registerAuthRoutes(app: Express) {
         picture?: string;
       };
 
-      // Use email as openId for Google users
-      const openId = `google:${googleUser.email}`;
-      let user = await db.getUserByOpenId(openId);
+      // Look up by email first to merge with existing password-registered account
+      let user = await db.getUserByEmail(googleUser.email);
 
       if (!user) {
-        // Auto-create user; first user is admin
+        // No existing user with this email — also check google: prefixed openId
+        user = await db.getUserByOpenId(`google:${googleUser.email}`);
+      }
+
+      if (!user) {
+        // Completely new user; first user is admin
         const firstUser = await isFirstUser();
+        const openId = `google:${googleUser.email}`;
         await db.upsertUser({
           openId,
           name: googleUser.name || googleUser.email,
@@ -278,7 +283,16 @@ export function registerAuthRoutes(app: Express) {
         });
         user = await db.getUserByOpenId(openId);
       } else {
-        await db.upsertUser({ openId, lastSignedIn: new Date() });
+        // Existing user found (by email or google openId) — update login info
+        await db.upsertUser({
+          openId: user.openId,
+          name: user.name || googleUser.name || googleUser.email,
+          email: googleUser.email,
+          loginMethod: user.loginMethod === "password" ? "password" : "google",
+          lastSignedIn: new Date(),
+        });
+        // Refresh user data
+        user = await db.getUserByOpenId(user.openId);
       }
 
       if (!user) {
