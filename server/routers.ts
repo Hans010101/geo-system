@@ -90,9 +90,10 @@ async function resolveApiConfig(platform: string): Promise<{
     }
     const covered = (gk.coveredPlatforms as string[]) || [];
     if (covered.includes(platform)) {
-      const model = platformConfig?.modelVersion ||
-        resolveModelForBaseUrl(platform, gk.baseUrl);
-      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}", model=${model}`);
+      // When using a global key, resolve model based on the KEY's baseUrl, not platformConfig
+      // platformConfig.modelVersion is only for platform's own API key
+      const model = resolveModelForBaseUrl(platform, gk.baseUrl);
+      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}", model=${model}, baseUrl=${gk.baseUrl}`);
       return {
         apiKey: gk.apiKey,
         baseUrl: gk.baseUrl,
