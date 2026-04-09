@@ -71,6 +71,9 @@ export default function ConfigCollection() {
     limit: 200,
   });
   const { data: platformConfigs } = trpc.platformConfigs.list.useQuery();
+  const { data: globalApiKeys } = trpc.globalApiKeys.list.useQuery();
+  const hasAnyApiKey = (globalApiKeys && globalApiKeys.length > 0) ||
+    platformConfigs?.some((p: any) => p.apiKeyEncrypted && p.apiBaseUrl);
 
   // Poll batch progress
   const { data: batchProgress } = trpc.collections.batchProgress.useQuery(
@@ -243,6 +246,13 @@ export default function ConfigCollection() {
         <h1 className="text-2xl font-bold tracking-tight">采集管理</h1>
         <p className="text-muted-foreground text-sm mt-1">手动触发采集任务，查看采集记录和详情</p>
       </div>
+
+      {!hasAnyApiKey && (
+        <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800 flex items-start gap-2">
+          <span className="shrink-0 mt-0.5">&#9888;</span>
+          <span>尚未配置 API Key，请先在「<a href="/config/platforms" className="underline font-medium">平台配置 → 全局 API 配置</a>」中添加至少一个 API Key 才能开始采集</span>
+        </div>
+      )}
 
       <Tabs defaultValue="trigger" className="space-y-4">
         <TabsList>

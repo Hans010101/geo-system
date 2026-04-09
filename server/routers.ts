@@ -5,7 +5,6 @@ import { publicProcedure, protectedProcedure, adminProcedure, developerProcedure
 import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
-import { ENV } from "./_core/env";
 import { nanoid } from "nanoid";
 import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, type Platform } from "@shared/geo-types";
 
@@ -44,13 +43,14 @@ function isCancelled(id: number): boolean {
   return cancelledIds.has(id);
 }
 
-// ==================== Global API Key Resolution (P0-6 / P1-3) ====================
-// Priority: platformConfig own key > globalApiKeys (coveredPlatforms match) > env OPENROUTER_API_KEY > built-in LLM
+// ==================== Global API Key Resolution ====================
+// Priority: platformConfig own key > globalApiKeys (coveredPlatforms match)
+// No more env variable or built-in LLM fallback
 async function resolveApiConfig(platform: string): Promise<{
   apiKey: string | null;
   baseUrl: string | null;
   model: string;
-  source: "platform" | "global" | "env" | "builtin";
+  source: "platform" | "global" | "none";
 }> {
   const platformConfig = await db.getPlatformConfig(platform);
   const model = platformConfig?.modelVersion ||
@@ -82,21 +82,22 @@ async function resolveApiConfig(platform: string): Promise<{
     }
   }
 
-  // 3. Environment variable (OpenRouter)
-  if (ENV.openrouterApiKey) {
-    return {
-      apiKey: ENV.openrouterApiKey,
-      baseUrl: ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1",
-      model,
-      source: "env",
-    };
-  }
-
-  // 4. Fallback to built-in LLM
-  return { apiKey: null, baseUrl: null, model, source: "builtin" };
+  // No API key available
+  return { apiKey: null, baseUrl: null, model, source: "none" };
 }
 
-// ==================== External LLM Call (P0-1: Real API) ====================
+// Get any active global API key (for analysis/citation extraction)
+async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string } | null> {
+  const globalKeys = await db.listGlobalApiKeys();
+  for (const gk of globalKeys) {
+    if (gk.isActive && gk.apiKey && gk.baseUrl) {
+      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl };
+    }
+  }
+  return null;
+}
+
+// ==================== External LLM Call ====================
 async function callExternalLLM(
   platform: string,
   messages: { role: string; content: string }[],
@@ -104,85 +105,67 @@ async function callExternalLLM(
 ): Promise<{ content: string; model: string; source: string }> {
   const config = await resolveApiConfig(platform);
 
-  if (config.source !== "builtin" && config.apiKey && config.baseUrl) {
-    // Real external API call with timeout and retry
-    const maxRetries = 3;
-    const timeoutMs = 60000; // 60s timeout
+  if (!config.apiKey || !config.baseUrl || config.source === "none") {
+    throw new Error(`该平台 (${platform}) 未配置 API Key，请在「平台配置」或「全局 API 配置」中设置`);
+  }
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        log.info(`Calling external API for ${platform} (attempt ${attempt}/${maxRetries})`, {
-          traceId, source: config.source, model: config.model,
-        });
+  const maxRetries = 3;
+  const timeoutMs = 60000;
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      log.info(`Calling external API for ${platform} (attempt ${attempt}/${maxRetries})`, {
+        traceId, source: config.source, model: config.model,
+      });
 
-        const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${config.apiKey}`,
-            "HTTP-Referer": "https://geo-system.app",
-            "X-Title": "GEO System",
-          },
-          body: JSON.stringify({
-            model: config.model,
-            messages,
-            max_tokens: 4096,
-          }),
-          signal: controller.signal,
-        });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-        clearTimeout(timer);
+      const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+          "HTTP-Referer": "https://geo-system.app",
+          "X-Title": "GEO System",
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          max_tokens: 4096,
+        }),
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`API ${response.status}: ${errText.slice(0, 200)}`);
-        }
+      clearTimeout(timer);
 
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || "";
-
-        log.info(`External API success for ${platform}`, {
-          traceId, model: data.model || config.model, contentLength: content.length,
-        });
-
-        return {
-          content,
-          model: data.model || config.model,
-          source: config.source,
-        };
-      } catch (error: any) {
-        log.warn(`External API attempt ${attempt} failed for ${platform}: ${error.message}`, { traceId });
-        if (attempt === maxRetries) {
-          log.error(`All ${maxRetries} attempts failed for ${platform}, falling back to built-in LLM`, { traceId });
-          break;
-        }
-        // Exponential backoff: 1s, 2s, 4s
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`API ${response.status}: ${errText.slice(0, 200)}`);
       }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+
+      log.info(`External API success for ${platform}`, {
+        traceId, model: data.model || config.model, contentLength: content.length,
+      });
+
+      return {
+        content,
+        model: data.model || config.model,
+        source: config.source,
+      };
+    } catch (error: any) {
+      log.warn(`External API attempt ${attempt} failed for ${platform}: ${error.message}`, { traceId });
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
     }
   }
 
-  // Fallback to built-in LLM
-  log.info(`Using built-in LLM for ${platform}`, { traceId });
-  return callBuiltinLLM(platform, messages, traceId);
-}
-
-async function callBuiltinLLM(
-  platform: string,
-  messages: { role: string; content: string }[],
-  traceId: string
-): Promise<{ content: string; model: string; source: string }> {
-  const result = await invokeLLM({
-    messages: messages.map((m) => ({ role: m.role as any, content: m.content })),
-  });
-  const content = typeof result.choices[0]?.message?.content === "string"
-    ? result.choices[0].message.content
-    : "";
-  const canonicalModel = PLATFORM_OPENROUTER_MODELS[platform as Platform] || platform;
-  return { content, model: canonicalModel, source: "builtin" };
+  throw new Error(`All retry attempts failed for ${platform}`);
 }
 
 // ==================== Collection Execution (P0-1: No more simulation) ====================
@@ -312,10 +295,13 @@ async function extractCitations(collectionId: number, responseText: string, trac
     }
 
     // Step 2: LLM-assisted extraction of implicit references (P0-3)
-    // Only run if the response is long enough to potentially contain references
-    if (responseText.length > 200) {
+    // Only run if the response is long enough and we have an API key
+    const citationApiKey = await getAnyActiveApiKey();
+    if (responseText.length > 200 && citationApiKey) {
       try {
         const extractionResult = await invokeLLM({
+          apiKey: citationApiKey.apiKey,
+          baseUrl: citationApiKey.baseUrl,
           messages: [
             {
               role: "system",
@@ -426,6 +412,12 @@ async function checkAlerts(
 // ==================== Analysis Helper ====================
 async function analyzeCollection(collectionId: number, questionText: string, responseText: string, traceId: string) {
   try {
+    const analysisApiKey = await getAnyActiveApiKey();
+    if (!analysisApiKey) {
+      log.warn(`Skipping analysis for collection ${collectionId}: no active API key`, { traceId });
+      return;
+    }
+
     const activeTargetFacts = await db.listTargetFacts(true);
     const targetFactKeys = activeTargetFacts.map((f) => f.factKey);
 
@@ -454,6 +446,8 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
 }`;
 
     const result = await invokeLLM({
+      apiKey: analysisApiKey.apiKey,
+      baseUrl: analysisApiKey.baseUrl,
       messages: [
         { role: "system", content: "You are a professional brand reputation analyst. Always respond with valid JSON only." },
         { role: "user", content: prompt },
@@ -1045,11 +1039,11 @@ const platformConfigsRouter = router({
       return { success: true };
     }),
 
-  // Global API settings
+  // Global API settings — check if any key is configured
   getGlobalApiConfig: protectedProcedure.query(async () => {
+    const key = await getAnyActiveApiKey();
     return {
-      hasOpenrouterKey: !!ENV.openrouterApiKey,
-      openrouterBaseUrl: ENV.openrouterBaseUrl,
+      hasApiKey: !!key,
     };
   }),
 

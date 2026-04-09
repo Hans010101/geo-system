@@ -1,5 +1,3 @@
-import { ENV } from "./env";
-
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
 export type TextContent = {
@@ -66,6 +64,12 @@ export type InvokeParams = {
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
+  /** API key — must be provided by caller */
+  apiKey: string;
+  /** Base URL (e.g. https://openrouter.ai/api/v1) — must be provided by caller */
+  baseUrl: string;
+  /** Model override */
+  model?: string;
 };
 
 export type ToolCall = {
@@ -209,15 +213,6 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  `${(ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1").replace(/\/$/, "")}/chat/completions`;
-
-const assertApiKey = () => {
-  if (!ENV.openrouterApiKey) {
-    throw new Error("OPENROUTER_API_KEY is not configured");
-  }
-};
-
 const normalizeResponseFormat = ({
   responseFormat,
   response_format,
@@ -264,8 +259,6 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
-
   const {
     messages,
     tools,
@@ -275,10 +268,19 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     output_schema,
     responseFormat,
     response_format,
+    apiKey,
+    baseUrl,
+    model,
   } = params;
 
+  if (!apiKey || !baseUrl) {
+    throw new Error("No API Key configured. Please add one in platform config or global API settings.");
+  }
+
+  const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: model || "gemini-2.5-flash",
     messages: messages.map(normalizeMessage),
   };
 
@@ -294,10 +296,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
+  payload.max_tokens = 32768;
   payload.thinking = {
     "budget_tokens": 128
-  }
+  };
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
@@ -310,11 +312,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.openrouterApiKey}`,
+      authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(payload),
   });
