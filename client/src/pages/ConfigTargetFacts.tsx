@@ -81,14 +81,12 @@ export default function ConfigTargetFacts() {
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          {canEdit && (
           <DialogTrigger asChild>
-            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+            <Button onClick={() => { setEditing(null); setDialogOpen(true); }} disabled={!canEdit}>
               <Plus className="h-4 w-4 mr-2" />
               新增事实
             </Button>
           </DialogTrigger>
-          )}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editing ? "编辑目标事实" : "新增目标事实"}</DialogTitle>
@@ -159,8 +157,7 @@ export default function ConfigTargetFacts() {
                     </div>
                     <p className="text-sm text-muted-foreground">{fact.factDescription}</p>
                   </div>
-                  {canEdit && (
-                  <div className="flex gap-1 shrink-0">
+                  <div className={`flex gap-1 shrink-0${!canEdit ? " invisible" : ""}`}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -181,7 +178,6 @@ export default function ConfigTargetFacts() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  )}
                 </div>
               </CardContent>
             </Card>

@@ -298,11 +298,10 @@ export default function ConfigCollection() {
                     </SelectContent>
                   </Select>
                 </div>
-                {canEdit && (
                 <Button
                   className="w-full"
                   onClick={handleSingleTrigger}
-                  disabled={triggerMutation.isPending || !selectedQuestion}
+                  disabled={triggerMutation.isPending || !selectedQuestion || !canEdit}
                 >
                   {triggerMutation.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -311,7 +310,6 @@ export default function ConfigCollection() {
                   )}
                   {triggerMutation.isPending ? "采集中..." : "开始采集"}
                 </Button>
-                )}
               </CardContent>
             </Card>
 
@@ -374,12 +372,11 @@ export default function ConfigCollection() {
                 <p className="text-xs text-muted-foreground">
                   将对所有活跃问题在所有启用的平台上执行一次采集，采集将在后台并发执行（默认并发数5）
                 </p>
-                {canEdit && (
                 <Button
                   className="w-full"
                   variant="outline"
                   onClick={() => batchTriggerMutation.mutate()}
-                  disabled={batchTriggerMutation.isPending || !!activeBatchId}
+                  disabled={batchTriggerMutation.isPending || !!activeBatchId || !canEdit}
                 >
                   {batchTriggerMutation.isPending || activeBatchId ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -388,7 +385,6 @@ export default function ConfigCollection() {
                   )}
                   {activeBatchId ? "执行中..." : "开始批量采集"}
                 </Button>
-                )}
               </CardContent>
             </Card>
           </div>
@@ -432,14 +428,13 @@ export default function ConfigCollection() {
                   <span className="text-sm font-medium text-primary">
                     已选 {selectedIds.size} 条
                   </span>
-                  {canEdit && (
                   <div className="flex gap-2 ml-auto">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1"
                       onClick={() => setConfirmAction("retry")}
-                      disabled={batchRetryMutation.isPending}
+                      disabled={batchRetryMutation.isPending || !canEdit}
                     >
                       <RefreshCw className="h-3 w-3" />
                       重新执行
@@ -449,13 +444,12 @@ export default function ConfigCollection() {
                       variant="destructive"
                       className="h-7 text-xs gap-1"
                       onClick={() => setConfirmAction("delete")}
-                      disabled={batchDeleteMutation.isPending}
+                      disabled={batchDeleteMutation.isPending || !canEdit}
                     >
                       <Trash2 className="h-3 w-3" />
                       批量删除
                     </Button>
                   </div>
-                  )}
                 </div>
               )}
             </CardHeader>

@@ -84,17 +84,17 @@ export default function ConfigUsers() {
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left p-3 font-medium w-16">ID</th>
-                  <th className="text-left p-3 font-medium w-40">用户名</th>
+                  <th className="text-left p-3 font-medium">ID</th>
+                  <th className="text-left p-3 font-medium">用户名</th>
                   <th className="text-left p-3 font-medium">邮箱</th>
-                  <th className="text-left p-3 font-medium w-28">角色</th>
-                  <th className="text-left p-3 font-medium w-24">登录方式</th>
-                  <th className="text-left p-3 font-medium w-28">注册时间</th>
-                  <th className="text-left p-3 font-medium w-28">最后登录</th>
-                  <th className="text-center p-3 font-medium w-16">操作</th>
+                  <th className="text-left p-3 font-medium">角色</th>
+                  <th className="text-left p-3 font-medium">登录方式</th>
+                  <th className="text-left p-3 font-medium">注册时间</th>
+                  <th className="text-left p-3 font-medium">最后登录</th>
+                  <th className="text-center p-3 font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,9 +107,9 @@ export default function ConfigUsers() {
                   const isBanned = (u as any).isBanned;
                   return (
                     <tr key={u.id} className={`border-b last:border-0 hover:bg-muted/20 ${isBanned ? "bg-muted/40 opacity-70" : ""}`}>
-                      <td className="p-3 text-muted-foreground truncate">{u.id}</td>
-                      <td className="p-3 font-medium truncate">{u.name || "-"}</td>
-                      <td className="p-3 text-muted-foreground truncate">{u.email || "-"}</td>
+                      <td className="p-3 text-muted-foreground whitespace-nowrap">{u.id}</td>
+                      <td className="p-3 font-medium">{u.name || "-"}</td>
+                      <td className="p-3 text-muted-foreground">{u.email || "-"}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-1.5">
                           <Badge variant="outline" className={`text-[10px] ${rc.color}`}>
@@ -122,7 +122,7 @@ export default function ConfigUsers() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-muted-foreground text-xs truncate">
+                      <td className="p-3 text-muted-foreground text-xs whitespace-nowrap">
                         {u.loginMethod || "-"}
                       </td>
                       <td className="p-3 text-muted-foreground text-xs">

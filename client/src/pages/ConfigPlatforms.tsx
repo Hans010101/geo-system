@@ -186,12 +186,10 @@ export default function ConfigPlatforms() {
             <TabsTrigger value="intl">国际 ({configuredPlatforms.filter(p => intlPlatforms.includes(p)).length})</TabsTrigger>
           </TabsList>
         </Tabs>
-        {canEdit && (
-        <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5">
+        <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5" disabled={!canEdit}>
           <Plus className="h-4 w-4" />
           添加平台
         </Button>
-        )}
       </div>
 
       {isLoading ? (
@@ -223,13 +221,11 @@ export default function ConfigPlatforms() {
                         <p className="text-[10px] text-muted-foreground">{platform}</p>
                       </div>
                     </div>
-                    {canEdit && (
                     <Switch
                       checked={isEnabled}
                       onCheckedChange={() => handleToggle(platform, isEnabled)}
-                      disabled={upsertMutation.isPending}
+                      disabled={upsertMutation.isPending || !canEdit}
                     />
-                    )}
                   </div>
 
                   <div className="space-y-1.5 text-xs">
@@ -256,8 +252,7 @@ export default function ConfigPlatforms() {
                     </div>
                   </div>
 
-                  {canEdit && (
-                  <div className="flex gap-2 mt-3">
+                  <div className={`flex gap-2 mt-3${!canEdit ? " invisible" : ""}`}>
                     <Button
                       variant="outline"
                       size="sm"
@@ -276,7 +271,6 @@ export default function ConfigPlatforms() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  )}
                 </CardContent>
               </Card>
             );
@@ -524,8 +518,7 @@ function GlobalApiKeysSheet({
                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: key.isActive ? "#22c55e" : "#9ca3af" }} />
                     <h4 className="font-semibold text-sm">{key.name}</h4>
                   </div>
-                  {canEdit && (
-                  <div className="flex items-center gap-1">
+                  <div className={`flex items-center gap-1${!canEdit ? " invisible" : ""}`}>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleEdit(key)}>
                       编辑
                     </Button>
@@ -538,7 +531,6 @@ function GlobalApiKeysSheet({
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  )}
                 </div>
                 <div className="text-xs space-y-1">
                   <div className="flex gap-2">
@@ -569,8 +561,8 @@ function GlobalApiKeysSheet({
           ))}
 
           {/* Add new key button */}
-          {canEdit && globalKeysList.length < 4 && !editingKey && (
-            <Button variant="outline" className="w-full gap-2" onClick={handleNew}>
+          {globalKeysList.length < 4 && !editingKey && (
+            <Button variant="outline" className="w-full gap-2" onClick={handleNew} disabled={!canEdit}>
               <Plus className="h-4 w-4" />
               添加全局 API Key（{globalKeysList.length}/4）
             </Button>
@@ -668,13 +660,11 @@ function GlobalApiKeysSheet({
                     <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => setEditingKey(null)}>
                       取消
                     </Button>
-                    {canEdit && (
-                    <Button type="submit" size="sm" className="flex-1" disabled={upsertMutation.isPending}>
+                    <Button type="submit" size="sm" className="flex-1" disabled={upsertMutation.isPending || !canEdit}>
                       {upsertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                         <><Check className="h-4 w-4 mr-1" />保存</>
                       )}
                     </Button>
-                    )}
                   </div>
                 </form>
               </CardContent>

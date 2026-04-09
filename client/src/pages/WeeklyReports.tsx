@@ -1,3 +1,4 @@
+import { useRole } from "@/hooks/useRole";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 import { PLATFORM_LABELS, SEVERITY_LABELS, SEVERITY_COLORS, type Platform } from "@shared/geo-types";
 
 export default function WeeklyReports() {
+  const { canEdit } = useRole();
   const [selectedWeek, setSelectedWeek] = useState<string>("");
   const { data: reportsList, isLoading } = trpc.weeklyReports.list.useQuery({ limit: 24 });
   const { data: reportDetail } = trpc.weeklyReports.get.useQuery(
@@ -90,7 +92,7 @@ export default function WeeklyReports() {
           <h1 className="text-2xl font-bold tracking-tight">周报</h1>
           <p className="text-muted-foreground text-sm mt-1">GEO监测周度报告</p>
         </div>
-        <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
+        <Button onClick={handleGenerate} disabled={!canEdit || generateMutation.isPending}>
           {generateMutation.isPending ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (

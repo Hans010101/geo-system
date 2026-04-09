@@ -171,9 +171,8 @@ export default function ConfigScheduler() {
           </div>
 
           {/* Save Button */}
-          {canEdit && (
           <div className="flex justify-end pt-2">
-            <Button onClick={handleSave} disabled={updateMutation.isPending}>
+            <Button onClick={handleSave} disabled={updateMutation.isPending || !canEdit}>
               {updateMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -182,7 +181,6 @@ export default function ConfigScheduler() {
               保存配置
             </Button>
           </div>
-          )}
         </CardContent>
       </Card>
 

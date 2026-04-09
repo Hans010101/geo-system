@@ -118,10 +118,9 @@ export default function ConfigOurContent() {
           </p>
         </div>
         <div className="flex gap-2">
-          {canEdit && (
           <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" disabled={!canEdit}>
                 <Upload className="h-4 w-4 mr-2" />
                 批量导入
               </Button>
@@ -141,7 +140,7 @@ export default function ConfigOurContent() {
                   required
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={batchCreateMutation.isPending}>
+                  <Button type="submit" disabled={batchCreateMutation.isPending || !canEdit}>
                     {batchCreateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     导入
                   </Button>
@@ -149,12 +148,10 @@ export default function ConfigOurContent() {
               </form>
             </DialogContent>
           </Dialog>
-          )}
 
-          {canEdit && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Button onClick={() => { setEditing(null); setDialogOpen(true); }} disabled={!canEdit}>
                 <Plus className="h-4 w-4 mr-2" />
                 添加URL
               </Button>
@@ -191,7 +188,7 @@ export default function ConfigOurContent() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !canEdit}>
                     {(createMutation.isPending || updateMutation.isPending) && (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     )}
@@ -201,7 +198,6 @@ export default function ConfigOurContent() {
               </form>
             </DialogContent>
           </Dialog>
-          )}
         </div>
       </div>
 
@@ -254,8 +250,7 @@ export default function ConfigOurContent() {
                       </Badge>
                     </div>
                   </div>
-                  {canEdit && (
-                  <div className="flex gap-1 shrink-0">
+                  <div className={`flex gap-1 shrink-0${!canEdit ? " invisible" : ""}`}>
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true); }}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -270,7 +265,6 @@ export default function ConfigOurContent() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
