@@ -197,7 +197,8 @@ export function registerAuthRoutes(app: Express) {
       res.status(500).json({ error: "Google OAuth is not configured" });
       return;
     }
-    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+    const proto = req.get("x-forwarded-proto") || req.protocol;
+    const redirectUri = `${proto}://${req.get("host")}/api/auth/google/callback`;
     const params = new URLSearchParams({
       client_id: ENV.googleClientId,
       redirect_uri: redirectUri,
@@ -218,7 +219,8 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
 
-      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+      const proto = req.get("x-forwarded-proto") || req.protocol;
+      const redirectUri = `${proto}://${req.get("host")}/api/auth/google/callback`;
 
       // Exchange code for tokens
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
