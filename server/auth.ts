@@ -130,6 +130,15 @@ export function registerAuthRoutes(app: Express) {
         return;
       }
 
+      // Also check if this email was already registered via Google login
+      if (username.includes("@")) {
+        const googleUser = await db.getUserByEmail(username);
+        if (googleUser) {
+          res.status(409).json({ error: "该邮箱已通过 Google 登录注册，请直接使用 Google 登录" });
+          return;
+        }
+      }
+
       const passwordHashValue = await hashPassword(password);
       const firstUser = await isFirstUser();
 

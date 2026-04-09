@@ -364,9 +364,18 @@ function DashboardLayoutContent({
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">
-                      {user?.name || "-"}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">
+                        {user?.name || "-"}
+                      </p>
+                      <span className={`inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium leading-none shrink-0 ${
+                        user?.role === "admin"
+                          ? "bg-primary/20 text-primary"
+                          : "bg-sidebar-accent text-sidebar-foreground/60"
+                      }`}>
+                        {user?.role === "admin" ? "管理员" : "成员"}
+                      </span>
+                    </div>
                     <p className="text-xs text-sidebar-foreground/50 truncate mt-1">
                       {user?.email || "-"}
                     </p>
