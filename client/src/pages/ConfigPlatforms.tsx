@@ -453,25 +453,27 @@ function GlobalApiKeysSheet({
   });
 
   const handleEdit = (key: any) => {
-    setEditingKey({ ...key });
+    setEditingKey({ ...key, newApiKey: "" });
     setSelectedPlatforms(Array.isArray(key.coveredPlatforms) ? key.coveredPlatforms as string[] : []);
     setShowApiKey(false);
   };
 
   const handleNew = () => {
-    setEditingKey({ id: undefined, name: "", apiKey: "", baseUrl: "", isActive: true });
+    setEditingKey({ id: undefined, name: "", newApiKey: "", baseUrl: "", isActive: true });
     setSelectedPlatforms([]);
     setShowApiKey(false);
   };
 
   const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    if (!editingKey?.name?.trim()) { toast.error("请输入名称"); return; }
+    if (!editingKey?.id && !editingKey?.baseUrl?.trim()) { toast.error("请输入 API Base URL"); return; }
+    if (!editingKey?.id && !editingKey?.newApiKey?.trim()) { toast.error("请输入 API Key"); return; }
     upsertMutation.mutate({
       id: editingKey?.id,
-      name: formData.get("name") as string,
-      apiKey: (formData.get("apiKey") as string) || null,
-      baseUrl: (formData.get("baseUrl") as string) || null,
+      name: editingKey.name.trim(),
+      apiKey: editingKey.newApiKey?.trim() || null,
+      baseUrl: editingKey.baseUrl?.trim() || null,
       coveredPlatforms: selectedPlatforms,
       isActive: editingKey?.isActive ?? true,
       sortOrder: editingKey?.sortOrder ?? globalKeysList.length,
@@ -579,9 +581,9 @@ function GlobalApiKeysSheet({
                   <div className="space-y-1.5">
                     <Label className="text-xs">名称（如：阿里百炼、OpenRouter）</Label>
                     <Input
-                      name="name"
                       placeholder="阿里百炼"
-                      defaultValue={editingKey.name}
+                      value={editingKey.name || ""}
+                      onChange={(e) => setEditingKey({ ...editingKey, name: e.target.value })}
                       required
                       className="h-8 text-sm"
                     />
@@ -589,11 +591,11 @@ function GlobalApiKeysSheet({
                   <div className="space-y-1.5">
                     <Label className="text-xs">API Base URL</Label>
                     <Input
-                      name="baseUrl"
                       placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-                      defaultValue={editingKey.baseUrl || ""}
+                      value={editingKey.baseUrl || ""}
+                      onChange={(e) => setEditingKey({ ...editingKey, baseUrl: e.target.value })}
                       className="h-8 text-sm font-mono"
-                      required
+                      required={!editingKey.id}
                     />
                     <p className="text-[10px] text-muted-foreground">
                       百炼: https://dashscope.aliyuncs.com/compatible-mode/v1<br />
@@ -604,12 +606,11 @@ function GlobalApiKeysSheet({
                     <Label className="text-xs">API Key {editingKey.id ? "(留空保持不变)" : ""}</Label>
                     <div className="relative">
                       <Input
-                        name="apiKey"
                         type={showApiKey ? "text" : "password"}
                         placeholder={editingKey.id ? "留空保持当前 Key 不变" : "sk-..."}
-                        defaultValue=""
+                        value={editingKey.newApiKey || ""}
+                        onChange={(e) => setEditingKey({ ...editingKey, newApiKey: e.target.value })}
                         className="h-8 text-sm font-mono pr-9"
-                        required={!editingKey.id}
                       />
                       <button
                         type="button"
