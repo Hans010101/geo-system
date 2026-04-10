@@ -41,6 +41,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import Markdown from "react-markdown";
 import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
@@ -860,9 +861,9 @@ function CollectionDetailSheet({
               </button>
               {showFullText && (
                 <div className="rounded-lg bg-muted/30 border px-4 py-3 mt-1 max-h-[500px] overflow-y-auto">
-                  <p className="text-sm leading-[1.6] whitespace-pre-wrap">
-                    {detail.responseText || "无回答内容"}
-                  </p>
+                  <div className="prose prose-sm prose-neutral max-w-none dark:prose-invert leading-[1.6]">
+                    <Markdown>{detail.responseText || "无回答内容"}</Markdown>
+                  </div>
                 </div>
               )}
             </div>
