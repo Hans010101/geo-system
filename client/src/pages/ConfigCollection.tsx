@@ -609,11 +609,20 @@ function CollectionDetailSheet({
   collectionId: number | null;
   onClose: () => void;
 }) {
+  const { canEdit } = useRole();
+  const utils = trpc.useUtils();
   const { data: detail, isLoading } = trpc.collections.get.useQuery(
     { id: collectionId! },
     { enabled: !!collectionId }
   );
   const [showFullText, setShowFullText] = useState(false);
+  const reanalyzeMutation = trpc.collections.reanalyze.useMutation({
+    onSuccess: () => {
+      utils.collections.get.invalidate({ id: collectionId! });
+      toast.success("重新分析完成");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   return (
     <Sheet open={!!collectionId} onOpenChange={(open) => !open && onClose()}>
@@ -775,6 +784,40 @@ function CollectionDetailSheet({
                 )}
               </div>
             );})()}
+
+            {/* ===== No analysis / Reanalyze ===== */}
+            {!detail.analysis && detail.status === "success" && (
+              <div className="px-6">
+                <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-4 text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">此采集尚无 AI 分析结果</p>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={reanalyzeMutation.isPending}
+                      onClick={() => reanalyzeMutation.mutate({ id: detail.id })}
+                    >
+                      {reanalyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                      重新分析
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {detail.analysis && canEdit && (
+              <div className="px-6 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs text-muted-foreground"
+                  disabled={reanalyzeMutation.isPending}
+                  onClick={() => reanalyzeMutation.mutate({ id: detail.id })}
+                >
+                  {reanalyzeMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                  重新分析
+                </Button>
+              </div>
+            )}
 
             {/* ===== Citations ===== */}
             {detail.citations && detail.citations.length > 0 && (

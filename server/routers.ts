@@ -120,16 +120,24 @@ async function resolveApiConfig(platform: string): Promise<{
 }
 
 // Get any active API key (for analysis/citation extraction)
-async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string } | null> {
+// Also resolves a suitable model based on the provider
+function resolveAnalysisModel(baseUrl: string): string {
+  if (baseUrl.includes("dashscope") || baseUrl.includes("aliyun")) return "qwen-plus";
+  if (baseUrl.includes("openrouter")) return "openai/gpt-4o";
+  return "openai/gpt-4o";
+}
+
+async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; model: string } | null> {
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
     if (gk.isActive && gk.apiKey && gk.baseUrl) {
-      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl };
+      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
     }
   }
   // Fallback to env
   if (ENV.openrouterApiKey) {
-    return { apiKey: ENV.openrouterApiKey, baseUrl: ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1" };
+    const baseUrl = ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1";
+    return { apiKey: ENV.openrouterApiKey, baseUrl, model: "openai/gpt-4o" };
   }
   return null;
 }
@@ -339,6 +347,7 @@ async function extractCitations(collectionId: number, responseText: string, trac
         const extractionResult = await invokeLLM({
           apiKey: citationApiKey.apiKey,
           baseUrl: citationApiKey.baseUrl,
+          model: citationApiKey.model,
           messages: [
             {
               role: "system",
@@ -485,6 +494,7 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
     const result = await invokeLLM({
       apiKey: analysisApiKey.apiKey,
       baseUrl: analysisApiKey.baseUrl,
+      model: analysisApiKey.model,
       messages: [
         { role: "system", content: "You are a professional brand reputation analyst. Always respond with valid JSON only." },
         { role: "user", content: prompt },
@@ -824,6 +834,22 @@ const collectionsRouter = router({
     .query(async ({ input }) => {
       const result = await db.listCollections({ ...(input || {}), limit: 5000 });
       return result.data;
+    }),
+
+  reanalyze: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const collection = await db.getCollectionById(input.id);
+      if (!collection) throw new Error("Collection not found");
+      if (!collection.responseText) throw new Error("No response text to analyze");
+
+      const traceId = `reanalyze-${input.id}-${nanoid(6)}`;
+      log.info(`Reanalyzing collection ${input.id}`, { traceId });
+
+      await analyzeCollection(input.id, collection.questionText, collection.responseText, traceId);
+      await extractCitations(input.id, collection.responseText, traceId);
+
+      return { success: true };
     }),
 });
 
