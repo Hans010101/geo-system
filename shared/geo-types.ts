@@ -59,18 +59,27 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   chatgpt: "openai/gpt-4o",
   perplexity: "perplexity/sonar-pro",
   gemini: "google/gemini-2.0-flash-001",
-  wenxin: "baidu/ernie-4.0-turbo",
+  wenxin: "baidu/ernie-4.5-300b-a47b",
   claude: "anthropic/claude-sonnet-4",
   copilot: "openai/gpt-4o",
-  doubao: "bytedance/doubao-1.5-pro-32k",
+  doubao: "bytedance-seed/seed-2.0-lite",
   kimi: "moonshotai/kimi-k2",
   deepseek: "deepseek/deepseek-chat-v3-0324",
-  minimax: "minimax/minimax-m1",
+  minimax: "minimax/minimax-m2.5",
   tongyi: "qwen/qwen-plus",
-  zhipu: "zhipu/glm-4-plus",
+  zhipu: "z-ai/glm-4.7",
   grok: "x-ai/grok-3",
   llama: "meta-llama/llama-4-maverick",
-  hunyuan: "tencent/hunyuan-turbos-latest",
+  hunyuan: "tencent/hunyuan-a13b-instruct",
+};
+
+// Platforms that are better served by Bailian (百炼) than OpenRouter
+// doubao on OpenRouter uses Seed models (not actual Doubao), results may differ
+export const PLATFORM_RECOMMENDED_PROVIDER: Partial<Record<Platform, string>> = {
+  doubao: "百炼",
+  wenxin: "百炼",
+  tongyi: "百炼",
+  hunyuan: "百炼",
 };
 
 // Bailian (阿里百炼) model names — used when baseUrl contains dashscope/bailian

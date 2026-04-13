@@ -6,7 +6,7 @@ import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
 import { nanoid } from "nanoid";
-import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, type Platform } from "@shared/geo-types";
+import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform } from "@shared/geo-types";
 import { ENV } from "./_core/env";
 
 // ==================== Structured Logger ====================
@@ -186,6 +186,12 @@ async function callExternalLLM(
 
       if (!response.ok) {
         const errText = await response.text();
+        // Detect model-not-found errors and give a helpful message
+        if (errText.includes("not a valid model") || errText.includes("model_not_found") || errText.includes("does not exist")) {
+          const rec = PLATFORM_RECOMMENDED_PROVIDER[platform as Platform];
+          const hint = rec ? `，推荐使用「${rec}」提供商` : "";
+          throw new Error(`该平台 (${PLATFORM_LABELS[platform as Platform] || platform}) 的模型 ${config.model} 在当前 API 提供商中不可用${hint}`);
+        }
         throw new Error(`API ${response.status}: ${errText.slice(0, 200)}`);
       }
 

@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_OPENROUTER_MODELS, type Platform,
+  PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_OPENROUTER_MODELS, PLATFORM_RECOMMENDED_PROVIDER, type Platform,
 } from "@shared/geo-types";
 import { useRole } from "@/hooks/useRole";
 
@@ -250,6 +250,12 @@ export default function ConfigPlatforms() {
                         <span className="text-muted-foreground">使用全局</span>
                       )}
                     </div>
+                    {PLATFORM_RECOMMENDED_PROVIDER[platform as Platform] && !hasCustomApi && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">推荐</span>
+                        <span className="text-[10px] text-orange-600">推荐{PLATFORM_RECOMMENDED_PROVIDER[platform as Platform]}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className={`flex gap-2 mt-3${!canEdit ? " invisible" : ""}`}>
