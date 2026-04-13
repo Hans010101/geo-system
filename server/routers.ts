@@ -122,14 +122,21 @@ async function resolveApiConfig(platform: string): Promise<{
 // Get any active API key (for analysis/citation extraction)
 // Also resolves a suitable model based on the provider
 function resolveAnalysisModel(baseUrl: string): string {
-  if (baseUrl.includes("dashscope") || baseUrl.includes("aliyun")) return "qwen-plus";
-  if (baseUrl.includes("openrouter")) return "openai/gpt-4o";
-  return "openai/gpt-4o";
+  if (baseUrl.includes("dashscope") || baseUrl.includes("aliyun")) return "qwen-turbo";
+  if (baseUrl.includes("openrouter")) return "google/gemini-2.0-flash-001";
+  return "google/gemini-2.0-flash-001";
 }
 
 async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; model: string } | null> {
   const globalKeys = await db.listGlobalApiKeys();
-  for (const gk of globalKeys) {
+  // Prefer OpenRouter for analysis (百炼 free tier exhausts quickly)
+  // Sort: openrouter first, then others
+  const sorted = [...globalKeys].sort((a, b) => {
+    const aIsOR = a.baseUrl?.includes("openrouter") ? 0 : 1;
+    const bIsOR = b.baseUrl?.includes("openrouter") ? 0 : 1;
+    return aIsOR - bIsOR;
+  });
+  for (const gk of sorted) {
     if (gk.isActive && gk.apiKey && gk.baseUrl) {
       return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
     }
@@ -948,6 +955,45 @@ const collectionsRouter = router({
       await extractCitations(input.id, collection.responseText, traceId);
 
       return { success: true };
+    }),
+
+  // Batch reanalyze: find N success collections without analysis, run analysis
+  reanalyzeAll: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).optional() }).optional())
+    .mutation(async ({ input }) => {
+      const batchSize = input?.limit || 10;
+      const database = await db.getDb();
+      if (!database) return { analyzed: 0, total: 0 };
+      const { collections, analyses } = await import("../drizzle/schema");
+      const { eq, sql, isNull } = await import("drizzle-orm");
+
+      // Find success collections without analysis
+      const missing = await database
+        .select({ id: collections.id, questionText: collections.questionText, responseText: collections.responseText })
+        .from(collections)
+        .leftJoin(analyses, eq(analyses.collectionId, collections.id))
+        .where(sql`${collections.status} = 'success' AND ${collections.responseText} IS NOT NULL AND ${analyses.id} IS NULL`)
+        .limit(batchSize);
+
+      const totalMissing = (await database
+        .select({ count: sql<number>`COUNT(DISTINCT ${collections.id})` })
+        .from(collections)
+        .leftJoin(analyses, eq(analyses.collectionId, collections.id))
+        .where(sql`${collections.status} = 'success' AND ${collections.responseText} IS NOT NULL AND ${analyses.id} IS NULL`)
+      )[0]?.count || 0;
+
+      let analyzed = 0;
+      for (const col of missing) {
+        const traceId = `bulk-analyze-${col.id}-${nanoid(4)}`;
+        try {
+          await analyzeCollection(col.id, col.questionText, col.responseText!, traceId);
+          analyzed++;
+        } catch (err: any) {
+          log.error(`Bulk analyze failed for ${col.id}: ${err.message}`, { traceId });
+        }
+      }
+
+      return { analyzed, total: Number(totalMissing) };
     }),
 });
 

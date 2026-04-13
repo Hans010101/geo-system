@@ -211,6 +211,18 @@ export default function ConfigCollection() {
     onError: (err) => toast.error(err.message),
   });
 
+  const reanalyzeAllMutation = trpc.collections.reanalyzeAll.useMutation({
+    onSuccess: (data) => {
+      utils.collections.list.invalidate();
+      if (data.analyzed > 0) {
+        toast.success(`已补充分析 ${data.analyzed} 条记录${data.total > data.analyzed ? `，剩余 ${data.total - data.analyzed} 条` : ""}`);
+      } else {
+        toast.info("所有成功记录已有分析结果");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const batchDeleteMutation = trpc.collections.batchDelete.useMutation({
     onSuccess: async (data) => {
       toast.success(`已删除 ${data.deleted} 条记录`);
@@ -536,7 +548,21 @@ export default function ConfigCollection() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between flex-wrap gap-3">
-                <CardTitle className="text-base font-semibold">采集记录</CardTitle>
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-base font-semibold">采集记录</CardTitle>
+                  {canEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7"
+                      disabled={reanalyzeAllMutation.isPending}
+                      onClick={() => reanalyzeAllMutation.mutate({ limit: 20 })}
+                    >
+                      {reanalyzeAllMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                      补充分析
+                    </Button>
+                  )}
+                </div>
                 {/* Status filter */}
                 <div className="flex items-center gap-2">
                   <Filter className="h-3.5 w-3.5 text-muted-foreground" />
