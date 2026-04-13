@@ -23,7 +23,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Play,
   Zap,
@@ -39,6 +39,8 @@ import {
   RefreshCw,
   Filter,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
@@ -54,50 +56,83 @@ import {
 } from "@shared/geo-types";
 import { useRole } from "@/hooks/useRole";
 
+const log_warn = (...args: any[]) => console.warn("[ConfigCollection]", ...args);
+
 type StatusFilter = "all" | "success" | "pending" | "failed";
+
+const PAGE_SIZE = 50;
 
 export default function ConfigCollection() {
   const { canEdit } = useRole();
   const [selectedQuestion, setSelectedQuestion] = useState<string>("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchDone, setBatchDone] = useState(0);
+  const [batchFailed, setBatchFailed] = useState(0);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
+  const [page, setPage] = useState(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const utils = trpc.useUtils();
 
   const { data: questionsList } = trpc.questions.list.useQuery({ status: "active" });
-  const { data: collectionsList, isLoading: collectionsLoading, refetch: refetchCollections } = trpc.collections.list.useQuery({
-    limit: 200,
-  });
+  const listInput = useMemo(() => ({
+    status: statusFilter === "all" ? undefined : statusFilter === "failed" ? "failed" : statusFilter,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+  }), [statusFilter, page]);
+  const { data: collectionsList, isLoading: collectionsLoading, refetch: refetchCollections } = trpc.collections.list.useQuery(listInput);
   const { data: platformConfigs } = trpc.platformConfigs.list.useQuery();
   const { data: globalApiKeys } = trpc.globalApiKeys.list.useQuery();
   const hasAnyApiKey = (globalApiKeys && globalApiKeys.length > 0) ||
     platformConfigs?.some((p: any) => p.apiKeyEncrypted && p.apiBaseUrl);
 
-  // Poll batch progress
-  const { data: batchProgress } = trpc.collections.batchProgress.useQuery(
-    { batchId: activeBatchId! },
-    {
-      enabled: !!activeBatchId,
-      refetchInterval: activeBatchId ? 3000 : false,
-    }
-  );
+  const totalPages = Math.ceil((collectionsList?.total || 0) / PAGE_SIZE);
 
-  // Stop polling when batch is done
-  useEffect(() => {
-    if (batchProgress && activeBatchId) {
-      if (batchProgress.pending === 0) {
-        toast.success(
-          `批量采集完成！成功 ${batchProgress.completed} 条，失败 ${batchProgress.failed} 条`
-        );
+  // ===== Polling-driven batch execution =====
+  const executeNextBatchMutation = trpc.collections.executeNextBatch.useMutation();
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const runNextBatch = useCallback(async () => {
+    if (!activeBatchId) return;
+    try {
+      const result = await executeNextBatchMutation.mutateAsync({
+        batchId: activeBatchId,
+        concurrency: 5,
+      });
+      setBatchDone((prev) => prev + result.completed);
+      setBatchFailed((prev) => prev + result.failed);
+
+      if (result.remaining === 0) {
+        stopPolling();
         setActiveBatchId(null);
+        toast.success(`批量采集完成！成功 ${batchDone + result.completed} 条，失败 ${batchFailed + result.failed} 条`);
         utils.collections.list.invalidate();
       }
+    } catch (err: any) {
+      log_warn("Batch execution error, will retry next tick:", err.message);
     }
-  }, [batchProgress, activeBatchId]);
+  }, [activeBatchId, batchDone, batchFailed, stopPolling, utils]);
+
+  // Start/stop polling when activeBatchId changes
+  useEffect(() => {
+    if (activeBatchId) {
+      // Run immediately, then every 2s
+      runNextBatch();
+      pollingRef.current = setInterval(runNextBatch, 2000);
+    }
+    return () => stopPolling();
+  }, [activeBatchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const triggerMutation = trpc.collections.trigger.useMutation({
     onSuccess: (data) => {
@@ -113,9 +148,12 @@ export default function ConfigCollection() {
 
   const batchTriggerMutation = trpc.collections.batchTrigger.useMutation({
     onSuccess: (data) => {
-      if (data.success) {
-        setActiveBatchId(data.batchId ?? null);
-        toast.info(`批量采集已启动，共 ${data.totalCreated} 条任务正在执行中...`);
+      if (data.success && data.batchId) {
+        setBatchTotal(data.totalCreated || 0);
+        setBatchDone(0);
+        setBatchFailed(0);
+        setActiveBatchId(data.batchId);
+        toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
       } else {
         toast.error(data.message || "批量采集失败");
       }
@@ -128,7 +166,6 @@ export default function ConfigCollection() {
       toast.success(`已删除 ${data.deleted} 条记录`);
       setSelectedIds(new Set());
       setConfirmAction(null);
-      // Force immediate refetch to sync UI with DB state
       await refetchCollections();
     },
     onError: (err) => {
@@ -138,12 +175,16 @@ export default function ConfigCollection() {
   });
 
   const batchRetryMutation = trpc.collections.batchRetry.useMutation({
-    onSuccess: async (data) => {
-      toast.success(`已重新触发 ${data.retried} 条采集任务`);
+    onSuccess: async (data: any) => {
+      if (data.batchId) {
+        setBatchTotal(data.retried);
+        setBatchDone(0);
+        setBatchFailed(0);
+        setActiveBatchId(data.batchId);
+        toast.info(`已重置 ${data.retried} 条任务，开始执行...`);
+      }
       setSelectedIds(new Set());
       setConfirmAction(null);
-      // Force immediate refetch
-      await refetchCollections();
     },
     onError: (err) => {
       toast.error(`重新执行失败: ${err.message}`);
@@ -163,25 +204,9 @@ export default function ConfigCollection() {
     return platformConfigs?.filter((p) => p.isEnabled).length || 0;
   }, [platformConfigs]);
 
-  // Filter collections by status
-  const filteredCollections = useMemo(() => {
-    const data = collectionsList?.data || [];
-    if (statusFilter === "all") return data;
-    if (statusFilter === "failed") return data.filter((c) => c.status === "failed" || c.status === "refused" || c.status === "timeout");
-    if (statusFilter === "pending") return data.filter((c) => c.status === "pending");
-    return data.filter((c) => c.status === statusFilter);
-  }, [collectionsList, statusFilter]);
-
-  // Status counts
-  const statusCounts = useMemo(() => {
-    const data = collectionsList?.data || [];
-    return {
-      all: data.length,
-      success: data.filter((c) => c.status === "success").length,
-      pending: data.filter((c) => c.status === "pending").length,
-      failed: data.filter((c) => c.status === "failed" || c.status === "refused" || c.status === "timeout").length,
-    };
-  }, [collectionsList]);
+  // Data comes pre-filtered from server via pagination
+  const filteredCollections = collectionsList?.data || [];
+  const totalRecords = collectionsList?.total || 0;
 
   // Select all toggle
   const allSelected = filteredCollections.length > 0 && filteredCollections.every((c) => selectedIds.has(c.id));
@@ -261,9 +286,9 @@ export default function ConfigCollection() {
           <TabsTrigger value="trigger">触发采集</TabsTrigger>
           <TabsTrigger value="history">
             采集记录
-            {statusCounts.pending > 0 && (
-              <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
-                {statusCounts.pending}
+            {activeBatchId && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 animate-pulse">
+                执行中
               </Badge>
             )}
           </TabsTrigger>
@@ -351,10 +376,10 @@ export default function ConfigCollection() {
                   </div>
                 </div>
 
-                {/* Batch progress (P0-2: enhanced with percentage + ETA) */}
-                {activeBatchId && batchProgress && (() => {
-                  const done = batchProgress.completed + batchProgress.failed;
-                  const pct = batchProgress.total > 0 ? Math.round((done / batchProgress.total) * 100) : 0;
+                {/* Batch progress — driven by local state from executeNextBatch */}
+                {activeBatchId && batchTotal > 0 && (() => {
+                  const done = batchDone + batchFailed;
+                  const pct = batchTotal > 0 ? Math.round((done / batchTotal) * 100) : 0;
                   return (
                     <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -367,13 +392,13 @@ export default function ConfigCollection() {
                       <Progress value={pct} className="h-2.5" />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>
-                          已完成 {done}/{batchProgress.total}
-                          {batchProgress.pending > 0 && ` · 排队中 ${batchProgress.pending}`}
+                          已完成 {done}/{batchTotal}
+                          {batchTotal - done > 0 && ` · 剩余 ${batchTotal - done}`}
                         </span>
                         <span>
-                          <span className="text-emerald-600">成功 {batchProgress.completed}</span>
-                          {batchProgress.failed > 0 && (
-                            <span className="text-destructive ml-2">失败 {batchProgress.failed}</span>
+                          <span className="text-emerald-600">成功 {batchDone}</span>
+                          {batchFailed > 0 && (
+                            <span className="text-destructive ml-2">失败 {batchFailed}</span>
                           )}
                         </span>
                       </div>
@@ -417,6 +442,7 @@ export default function ConfigCollection() {
                         onClick={() => {
                           setStatusFilter(s);
                           setSelectedIds(new Set());
+                          setPage(0);
                         }}
                         className={`px-3 py-1.5 transition-colors ${
                           statusFilter === s
@@ -425,9 +451,6 @@ export default function ConfigCollection() {
                         }`}
                       >
                         {s === "all" ? "全部" : s === "success" ? "成功" : s === "pending" ? "执行中" : "失败"}
-                        <span className="ml-1 opacity-70">
-                          ({statusCounts[s]})
-                        </span>
                       </button>
                     ))}
                   </div>
@@ -550,6 +573,35 @@ export default function ConfigCollection() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Pagination controls */}
+              {totalRecords > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t text-sm">
+                  <span className="text-muted-foreground">
+                    共 {totalRecords} 条记录，第 {page + 1}/{totalPages || 1} 页
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page === 0}
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+                      上一页
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages - 1}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      下一页
+                      <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

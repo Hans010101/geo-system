@@ -731,7 +731,7 @@ const collectionsRouter = router({
       return { success: false };
     }),
 
-  // Batch trigger: P0-2 concurrent execution with p-limit
+  // Batch trigger: creates all pending records, NO background execution
   batchTrigger: adminProcedure
     .input(
       z.object({
@@ -740,17 +740,15 @@ const collectionsRouter = router({
     )
     .mutation(async ({ input }) => {
       const batchId = `batch-${nanoid(8)}`;
-      const concurrency = input?.concurrency || 5;
       const questionsList = await db.listQuestions({ status: "active" });
       const platformConfigsList = await db.listPlatformConfigs();
       const enabledPlatforms = platformConfigsList.filter((p) => p.isEnabled).map((p) => p.platform);
 
       if (enabledPlatforms.length === 0) {
-        return { success: false, message: "No enabled platforms" };
+        return { success: false, message: "No enabled platforms", batchId, totalCreated: 0 };
       }
 
-      // Create all collection records first
-      const tasks: { collectionId: number; question: typeof questionsList[0]; platform: string }[] = [];
+      let totalCreated = 0;
       for (const question of questionsList) {
         for (const platform of enabledPlatforms) {
           const collectionId = await db.createCollection({
@@ -762,18 +760,68 @@ const collectionsRouter = router({
             status: "pending",
             batchId,
           });
-          if (collectionId) {
-            tasks.push({ collectionId, question, platform });
-          }
+          if (collectionId) totalCreated++;
         }
       }
 
-      // Fire and forget: run concurrently in background
-      runBatchConcurrently(tasks, batchId, concurrency).catch((err) => {
-        log.error(`Batch ${batchId} execution error: ${err.message}`);
+      return { success: true, batchId, totalCreated };
+    }),
+
+  // Execute next batch of pending items — called by frontend polling
+  executeNextBatch: adminProcedure
+    .input(z.object({
+      batchId: z.string(),
+      concurrency: z.number().min(1).max(10).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const concurrency = input.concurrency || 5;
+      const progress = await db.getBatchProgress(input.batchId);
+
+      // Get pending collections for this batch
+      const pendingResult = await db.listCollections({
+        batchId: input.batchId,
+        status: "pending",
+        limit: concurrency,
+        offset: 0,
+      });
+      const pending = pendingResult.data;
+
+      if (pending.length === 0) {
+        return { completed: 0, failed: 0, remaining: 0, total: progress.total };
+      }
+
+      // Execute synchronously (await) — not fire-and-forget
+      let completed = 0;
+      let failed = 0;
+      const results = await Promise.allSettled(
+        pending.map(async (col) => {
+          const question = await db.getQuestionById(col.questionId);
+          if (!question) {
+            await db.updateCollection(col.id, { status: "failed", errorMessage: "Question not found" });
+            return { success: false };
+          }
+          return executeCollection(
+            col.id,
+            { questionId: question.questionId, text: question.text, language: question.language },
+            col.platform
+          );
+        })
+      );
+
+      results.forEach((r) => {
+        if (r.status === "fulfilled" && r.value.success) completed++;
+        else failed++;
       });
 
-      return { success: true, batchId, totalCreated: tasks.length, concurrency };
+      // Recount remaining
+      const updatedProgress = await db.getBatchProgress(input.batchId);
+
+      return {
+        completed,
+        failed,
+        remaining: updatedProgress.pending,
+        total: updatedProgress.total,
+      };
     }),
 
   // Get batch progress
@@ -781,6 +829,28 @@ const collectionsRouter = router({
     .input(z.object({ batchId: z.string() }))
     .query(async ({ input }) => {
       return db.getBatchProgress(input.batchId);
+    }),
+
+  // Reset stale pending records (stuck > 5 min)
+  resetStale: adminProcedure
+    .input(z.object({ batchId: z.string().optional() }).optional())
+    .mutation(async ({ input }) => {
+      const database = await db.getDb();
+      if (!database) return { reset: 0 };
+      const { collections } = await import("../drizzle/schema");
+      const { sql, eq, and } = await import("drizzle-orm");
+      const conditions = [
+        eq(collections.status, "pending"),
+        sql`${collections.createdAt} < DATE_SUB(NOW(), INTERVAL 5 MINUTE)`,
+      ];
+      if (input?.batchId) {
+        conditions.push(eq(collections.batchId, input.batchId));
+      }
+      const stale = await database.select({ id: collections.id }).from(collections).where(and(...conditions));
+      for (const s of stale) {
+        await db.updateCollection(s.id, { status: "pending" });
+      }
+      return { reset: stale.length };
     }),
 
   // Batch delete collection records
@@ -799,31 +869,19 @@ const collectionsRouter = router({
       return { success: true, deleted };
     }),
 
-  // Batch retry (re-execute) collection records - now concurrent
+  // Batch retry: reset to pending so executeNextBatch can pick them up
   batchRetry: adminProcedure
     .input(z.object({ ids: z.array(z.number()) }))
     .mutation(async ({ input }) => {
-      if (input.ids.length === 0) return { success: true, retried: 0 };
+      if (input.ids.length === 0) return { success: true, retried: 0, batchId: "" };
       const collections = await db.getCollectionsByIds(input.ids);
+      const batchId = `retry-${nanoid(8)}`;
 
-      // Reset status to pending first
       for (const col of collections) {
-        await db.updateCollection(col.id, { status: "pending", errorMessage: null });
+        await db.updateCollection(col.id, { status: "pending", errorMessage: null, batchId });
       }
 
-      const tasks = collections.map((col) => ({
-        collectionId: col.id,
-        question: { questionId: col.questionId, text: col.questionText, language: col.language || "zh-CN" },
-        platform: col.platform,
-      }));
-
-      // Fire and forget concurrent retry
-      const batchId = `retry-${nanoid(8)}`;
-      runBatchConcurrently(tasks, batchId, 5).catch((err) => {
-        log.error(`Retry batch error: ${err.message}`);
-      });
-
-      return { success: true, retried: collections.length };
+      return { success: true, retried: collections.length, batchId };
     }),
 
   // Data export: CSV format for collection records
