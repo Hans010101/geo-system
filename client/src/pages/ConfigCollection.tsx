@@ -65,6 +65,7 @@ const PAGE_SIZE = 50;
 export default function ConfigCollection() {
   const { canEdit } = useRole();
   const [selectedQuestion, setSelectedQuestion] = useState<string>("");
+  const [selectedQuestionAll, setSelectedQuestionAll] = useState<string>("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [batchTotal, setBatchTotal] = useState(0);
@@ -160,6 +161,21 @@ export default function ConfigCollection() {
         toast.success("采集完成");
       } else {
         toast.error("采集失败: " + (data.error || "未知错误"));
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const triggerAllPlatformsMutation = trpc.collections.triggerAllPlatforms.useMutation({
+    onSuccess: (data) => {
+      if (data.success && data.batchId) {
+        setBatchTotal(data.totalCreated || 0);
+        setBatchDone(0);
+        setBatchFailed(0);
+        setActiveBatchId(data.batchId);
+        toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
+      } else {
+        toast.error(data.message || "采集失败");
       }
     },
     onError: (err) => toast.error(err.message),
@@ -314,7 +330,7 @@ export default function ConfigCollection() {
         </TabsList>
 
         <TabsContent value="trigger" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Single trigger */}
             <Card>
               <CardHeader className="pb-3">
@@ -365,6 +381,72 @@ export default function ConfigCollection() {
                     <Play className="h-4 w-4 mr-2" />
                   )}
                   {triggerMutation.isPending ? "采集中..." : "开始采集"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Single question → all platforms */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  单题全模型采集
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">选择问题</label>
+                  <Select value={selectedQuestionAll} onValueChange={setSelectedQuestionAll}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择问题..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {questionsList?.map((q) => (
+                        <SelectItem key={q.questionId} value={q.questionId}>
+                          [{q.questionId}] {q.text.slice(0, 40)}...
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  将在 <strong>{enabledPlatforms}</strong> 个启用平台上同时采集此问题
+                </p>
+
+                {/* Reuse batch progress bar if this triggered it */}
+                {activeBatchId && batchTotal > 0 && batchTotal <= enabledPlatforms && (() => {
+                  const done = batchDone + batchFailed;
+                  const pct = batchTotal > 0 ? Math.round((done / batchTotal) * 100) : 0;
+                  return (
+                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> 采集中...</span>
+                        <span className="font-bold text-primary">{pct}%</span>
+                      </div>
+                      <Progress value={pct} className="h-2" />
+                      <div className="text-xs text-muted-foreground">
+                        已完成 {done}/{batchTotal}
+                        <span className="text-emerald-600 ml-2">成功 {batchDone}</span>
+                        {batchFailed > 0 && <span className="text-destructive ml-2">失败 {batchFailed}</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    if (!selectedQuestionAll) { toast.error("请选择一个问题"); return; }
+                    triggerAllPlatformsMutation.mutate({ questionId: selectedQuestionAll });
+                  }}
+                  disabled={triggerAllPlatformsMutation.isPending || !!activeBatchId || !selectedQuestionAll || !canEdit}
+                >
+                  {triggerAllPlatformsMutation.isPending || activeBatchId ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4 mr-2" />
+                  )}
+                  {activeBatchId ? "执行中..." : "开始采集"}
                 </Button>
               </CardContent>
             </Card>

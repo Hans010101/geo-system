@@ -731,6 +731,37 @@ const collectionsRouter = router({
       return { success: false };
     }),
 
+  // Single question → all enabled platforms
+  triggerAllPlatforms: adminProcedure
+    .input(z.object({ questionId: z.string() }))
+    .mutation(async ({ input }) => {
+      const question = await db.getQuestionById(input.questionId);
+      if (!question) throw new Error("Question not found");
+
+      const platformConfigsList = await db.listPlatformConfigs();
+      const enabledPlatforms = platformConfigsList.filter((p) => p.isEnabled).map((p) => p.platform);
+      if (enabledPlatforms.length === 0) {
+        return { success: false, message: "No enabled platforms", batchId: "", totalCreated: 0 };
+      }
+
+      const batchId = `single-q-${nanoid(8)}`;
+      let totalCreated = 0;
+      for (const platform of enabledPlatforms) {
+        const id = await db.createCollection({
+          questionId: question.questionId,
+          questionText: question.text,
+          platform,
+          language: question.language,
+          timestamp: Date.now(),
+          status: "pending",
+          batchId,
+        });
+        if (id) totalCreated++;
+      }
+
+      return { success: true, batchId, totalCreated };
+    }),
+
   // Batch trigger: creates all pending records, NO background execution
   batchTrigger: adminProcedure
     .input(
