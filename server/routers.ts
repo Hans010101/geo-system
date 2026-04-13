@@ -910,6 +910,9 @@ const collectionsRouter = router({
       const traceId = `reanalyze-${input.id}-${nanoid(6)}`;
       log.info(`Reanalyzing collection ${input.id}`, { traceId });
 
+      // Delete existing analysis to prevent duplicates
+      await db.deleteAnalysisByCollectionId(input.id);
+
       await analyzeCollection(input.id, collection.questionText, collection.responseText, traceId);
       await extractCitations(input.id, collection.responseText, traceId);
 

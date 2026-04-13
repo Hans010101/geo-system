@@ -75,7 +75,8 @@ export default function ConfigCollection() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
   const [page, setPage] = useState(0);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPollingRef = useRef(false);
 
   const utils = trpc.useUtils();
 
@@ -97,39 +98,57 @@ export default function ConfigCollection() {
   const executeNextBatchMutation = trpc.collections.executeNextBatch.useMutation();
 
   const stopPolling = useCallback(() => {
+    isPollingRef.current = false;
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, []);
 
-  const runNextBatch = useCallback(async () => {
-    if (!activeBatchId) return;
-    try {
-      const result = await executeNextBatchMutation.mutateAsync({
-        batchId: activeBatchId,
-        concurrency: 5,
-      });
-      setBatchDone((prev) => prev + result.completed);
-      setBatchFailed((prev) => prev + result.failed);
+  const startPolling = useCallback((bId: string) => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
 
-      if (result.remaining === 0) {
-        stopPolling();
-        setActiveBatchId(null);
-        toast.success(`批量采集完成！成功 ${batchDone + result.completed} 条，失败 ${batchFailed + result.failed} 条`);
-        utils.collections.list.invalidate();
+    const poll = async () => {
+      if (!isPollingRef.current) return;
+      try {
+        const result = await executeNextBatchMutation.mutateAsync({
+          batchId: bId,
+          concurrency: 5,
+        });
+        setBatchDone((prev) => prev + result.completed);
+        setBatchFailed((prev) => prev + result.failed);
+
+        if (result.remaining === 0) {
+          isPollingRef.current = false;
+          setActiveBatchId(null);
+          utils.collections.list.invalidate();
+          return; // done
+        }
+      } catch (err: any) {
+        log_warn("Batch error, retrying:", err.message);
       }
-    } catch (err: any) {
-      log_warn("Batch execution error, will retry next tick:", err.message);
-    }
-  }, [activeBatchId, batchDone, batchFailed, stopPolling, utils]);
+      // Schedule next tick
+      if (isPollingRef.current) {
+        pollingRef.current = setTimeout(poll, 2000);
+      }
+    };
+    poll();
+  }, [executeNextBatchMutation, utils]);
 
-  // Start/stop polling when activeBatchId changes
+  // Show toast when batch finishes (activeBatchId becomes null)
+  const prevBatchIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevBatchIdRef.current && !activeBatchId) {
+      toast.success(`批量采集完成！成功 ${batchDone} 条，失败 ${batchFailed} 条`);
+    }
+    prevBatchIdRef.current = activeBatchId;
+  }, [activeBatchId, batchDone, batchFailed]);
+
+  // Start polling when activeBatchId is set
   useEffect(() => {
     if (activeBatchId) {
-      // Run immediately, then every 2s
-      runNextBatch();
-      pollingRef.current = setInterval(runNextBatch, 2000);
+      startPolling(activeBatchId);
     }
     return () => stopPolling();
   }, [activeBatchId]); // eslint-disable-line react-hooks/exhaustive-deps

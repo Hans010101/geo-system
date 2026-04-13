@@ -347,6 +347,12 @@ export async function createAnalysis(data: InsertAnalysis) {
   await db.insert(analyses).values(data);
 }
 
+export async function deleteAnalysisByCollectionId(collectionId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(analyses).where(eq(analyses.collectionId, collectionId));
+}
+
 export async function getSentimentTrend(questionId: string, platform?: string) {
   const db = await getDb();
   if (!db) return [];
