@@ -62,22 +62,84 @@ type StatusFilter = "all" | "success" | "pending" | "failed";
 
 const PAGE_SIZE = 50;
 
+// Standalone polling engine — uses raw fetch to avoid tRPC mutation re-render issues
+function useBatchPoller() {
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [done, setDone] = useState(0);
+  const [failed, setFailed] = useState(0);
+  const activeRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stop = useCallback(() => {
+    activeRef.current = false;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  }, []);
+
+  const start = useCallback((id: string, totalCount: number) => {
+    stop();
+    setBatchId(id);
+    setTotal(totalCount);
+    setDone(0);
+    setFailed(0);
+    activeRef.current = true;
+
+    const poll = async () => {
+      if (!activeRef.current) return;
+      try {
+        // Use raw fetch to call tRPC mutation — avoids React re-render dependency loop
+        const res = await fetch("/api/trpc/collections.executeNextBatch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ json: { batchId: id, concurrency: 5 } }),
+        });
+        const json = await res.json();
+        const result = json?.result?.data?.json || json?.result?.data || {};
+        console.log("[Poller]", id, result);
+
+        if (result.completed != null) setDone((p) => p + result.completed);
+        if (result.failed != null) setFailed((p) => p + result.failed);
+
+        if (result.remaining === 0 || result.remaining == null) {
+          activeRef.current = false;
+          setBatchId(null);
+          return;
+        }
+      } catch (err: any) {
+        console.warn("[Poller] error:", err.message);
+      }
+      if (activeRef.current) {
+        timerRef.current = setTimeout(poll, 2000);
+      }
+    };
+    poll();
+  }, [stop]);
+
+  const isRunning = !!batchId;
+  const pct = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+
+  // Cleanup on unmount
+  useEffect(() => () => stop(), [stop]);
+
+  return { batchId, total, done, failed, pct, isRunning, start, stop };
+}
+
 export default function ConfigCollection() {
   const { canEdit } = useRole();
   const [selectedQuestion, setSelectedQuestion] = useState<string>("");
   const [selectedQuestionAll, setSelectedQuestionAll] = useState<string>("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
-  const [batchTotal, setBatchTotal] = useState(0);
-  const [batchDone, setBatchDone] = useState(0);
-  const [batchFailed, setBatchFailed] = useState(0);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
   const [page, setPage] = useState(0);
-  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isPollingRef = useRef(false);
+
+  // Two independent polling channels
+  const singleQ = useBatchPoller();
+  const batch = useBatchPoller();
+  const anyRunning = singleQ.isRunning || batch.isRunning;
 
   const utils = trpc.useUtils();
 
@@ -95,64 +157,23 @@ export default function ConfigCollection() {
 
   const totalPages = Math.ceil((collectionsList?.total || 0) / PAGE_SIZE);
 
-  // ===== Polling-driven batch execution =====
-  const executeNextBatchMutation = trpc.collections.executeNextBatch.useMutation();
-
-  const stopPolling = useCallback(() => {
-    isPollingRef.current = false;
-    if (pollingRef.current) {
-      clearTimeout(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
-
-  const startPolling = useCallback((bId: string) => {
-    if (isPollingRef.current) return;
-    isPollingRef.current = true;
-
-    const poll = async () => {
-      if (!isPollingRef.current) return;
-      try {
-        const result = await executeNextBatchMutation.mutateAsync({
-          batchId: bId,
-          concurrency: 5,
-        });
-        setBatchDone((prev) => prev + result.completed);
-        setBatchFailed((prev) => prev + result.failed);
-
-        if (result.remaining === 0) {
-          isPollingRef.current = false;
-          setActiveBatchId(null);
-          utils.collections.list.invalidate();
-          return; // done
-        }
-      } catch (err: any) {
-        log_warn("Batch error, retrying:", err.message);
-      }
-      // Schedule next tick
-      if (isPollingRef.current) {
-        pollingRef.current = setTimeout(poll, 2000);
-      }
-    };
-    poll();
-  }, [executeNextBatchMutation, utils]);
-
-  // Show toast when batch finishes (activeBatchId becomes null)
-  const prevBatchIdRef = useRef<string | null>(null);
+  // Refresh list when any poller finishes
+  const prevSingleQ = useRef(singleQ.isRunning);
+  const prevBatch = useRef(batch.isRunning);
   useEffect(() => {
-    if (prevBatchIdRef.current && !activeBatchId) {
-      toast.success(`批量采集完成！成功 ${batchDone} 条，失败 ${batchFailed} 条`);
+    if (prevSingleQ.current && !singleQ.isRunning) {
+      toast.success(`单题采集完成！成功 ${singleQ.done} 条，失败 ${singleQ.failed} 条`);
+      utils.collections.list.invalidate();
     }
-    prevBatchIdRef.current = activeBatchId;
-  }, [activeBatchId, batchDone, batchFailed]);
-
-  // Start polling when activeBatchId is set
+    prevSingleQ.current = singleQ.isRunning;
+  }, [singleQ.isRunning]);
   useEffect(() => {
-    if (activeBatchId) {
-      startPolling(activeBatchId);
+    if (prevBatch.current && !batch.isRunning) {
+      toast.success(`批量采集完成！成功 ${batch.done} 条，失败 ${batch.failed} 条`);
+      utils.collections.list.invalidate();
     }
-    return () => stopPolling();
-  }, [activeBatchId]); // eslint-disable-line react-hooks/exhaustive-deps
+    prevBatch.current = batch.isRunning;
+  }, [batch.isRunning]);
 
   const triggerMutation = trpc.collections.trigger.useMutation({
     onSuccess: (data) => {
@@ -169,10 +190,7 @@ export default function ConfigCollection() {
   const triggerAllPlatformsMutation = trpc.collections.triggerAllPlatforms.useMutation({
     onSuccess: (data) => {
       if (data.success && data.batchId) {
-        setBatchTotal(data.totalCreated || 0);
-        setBatchDone(0);
-        setBatchFailed(0);
-        setActiveBatchId(data.batchId);
+        singleQ.start(data.batchId, data.totalCreated || 0);
         toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
       } else {
         toast.error(data.message || "采集失败");
@@ -184,10 +202,7 @@ export default function ConfigCollection() {
   const batchTriggerMutation = trpc.collections.batchTrigger.useMutation({
     onSuccess: (data) => {
       if (data.success && data.batchId) {
-        setBatchTotal(data.totalCreated || 0);
-        setBatchDone(0);
-        setBatchFailed(0);
-        setActiveBatchId(data.batchId);
+        batch.start(data.batchId, data.totalCreated || 0);
         toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
       } else {
         toast.error(data.message || "批量采集失败");
@@ -212,10 +227,7 @@ export default function ConfigCollection() {
   const batchRetryMutation = trpc.collections.batchRetry.useMutation({
     onSuccess: async (data: any) => {
       if (data.batchId) {
-        setBatchTotal(data.retried);
-        setBatchDone(0);
-        setBatchFailed(0);
-        setActiveBatchId(data.batchId);
+        batch.start(data.batchId, data.retried);
         toast.info(`已重置 ${data.retried} 条任务，开始执行...`);
       }
       setSelectedIds(new Set());
@@ -321,7 +333,7 @@ export default function ConfigCollection() {
           <TabsTrigger value="trigger">触发采集</TabsTrigger>
           <TabsTrigger value="history">
             采集记录
-            {activeBatchId && (
+            {anyRunning && (
               <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 animate-pulse">
                 执行中
               </Badge>
@@ -413,25 +425,21 @@ export default function ConfigCollection() {
                   将在 <strong>{enabledPlatforms}</strong> 个启用平台上同时采集此问题
                 </p>
 
-                {/* Reuse batch progress bar if this triggered it */}
-                {activeBatchId && batchTotal > 0 && batchTotal <= enabledPlatforms && (() => {
-                  const done = batchDone + batchFailed;
-                  const pct = batchTotal > 0 ? Math.round((done / batchTotal) * 100) : 0;
-                  return (
-                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> 采集中...</span>
-                        <span className="font-bold text-primary">{pct}%</span>
-                      </div>
-                      <Progress value={pct} className="h-2" />
-                      <div className="text-xs text-muted-foreground">
-                        已完成 {done}/{batchTotal}
-                        <span className="text-emerald-600 ml-2">成功 {batchDone}</span>
-                        {batchFailed > 0 && <span className="text-destructive ml-2">失败 {batchFailed}</span>}
-                      </div>
+                {/* Single-Q progress bar */}
+                {singleQ.isRunning && (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> 采集中...</span>
+                      <span className="font-bold text-primary">{singleQ.pct}%</span>
                     </div>
-                  );
-                })()}
+                    <Progress value={singleQ.pct} className="h-2" />
+                    <div className="text-xs text-muted-foreground">
+                      已完成 {singleQ.done + singleQ.failed}/{singleQ.total}
+                      <span className="text-emerald-600 ml-2">成功 {singleQ.done}</span>
+                      {singleQ.failed > 0 && <span className="text-destructive ml-2">失败 {singleQ.failed}</span>}
+                    </div>
+                  </div>
+                )}
 
                 <Button
                   className="w-full"
@@ -439,14 +447,14 @@ export default function ConfigCollection() {
                     if (!selectedQuestionAll) { toast.error("请选择一个问题"); return; }
                     triggerAllPlatformsMutation.mutate({ questionId: selectedQuestionAll });
                   }}
-                  disabled={triggerAllPlatformsMutation.isPending || !!activeBatchId || !selectedQuestionAll || !canEdit}
+                  disabled={triggerAllPlatformsMutation.isPending || singleQ.isRunning || !selectedQuestionAll || !canEdit}
                 >
-                  {triggerAllPlatformsMutation.isPending || activeBatchId ? (
+                  {triggerAllPlatformsMutation.isPending || singleQ.isRunning ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Zap className="h-4 w-4 mr-2" />
                   )}
-                  {activeBatchId ? "执行中..." : "开始采集"}
+                  {singleQ.isRunning ? "执行中..." : "开始采集"}
                 </Button>
               </CardContent>
             </Card>
@@ -477,35 +485,31 @@ export default function ConfigCollection() {
                   </div>
                 </div>
 
-                {/* Batch progress — driven by local state from executeNextBatch */}
-                {activeBatchId && batchTotal > 0 && (() => {
-                  const done = batchDone + batchFailed;
-                  const pct = batchTotal > 0 ? Math.round((done / batchTotal) * 100) : 0;
-                  return (
-                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-sm font-medium">批量采集执行中...</span>
-                        </div>
-                        <span className="text-lg font-bold text-primary">{pct}%</span>
+                {/* Batch progress */}
+                {batch.isRunning && (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-sm font-medium">批量采集执行中...</span>
                       </div>
-                      <Progress value={pct} className="h-2.5" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>
-                          已完成 {done}/{batchTotal}
-                          {batchTotal - done > 0 && ` · 剩余 ${batchTotal - done}`}
-                        </span>
-                        <span>
-                          <span className="text-emerald-600">成功 {batchDone}</span>
-                          {batchFailed > 0 && (
-                            <span className="text-destructive ml-2">失败 {batchFailed}</span>
-                          )}
-                        </span>
-                      </div>
+                      <span className="text-lg font-bold text-primary">{batch.pct}%</span>
                     </div>
-                  );
-                })()}
+                    <Progress value={batch.pct} className="h-2.5" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>
+                        已完成 {batch.done + batch.failed}/{batch.total}
+                        {batch.total - batch.done - batch.failed > 0 && ` · 剩余 ${batch.total - batch.done - batch.failed}`}
+                      </span>
+                      <span>
+                        <span className="text-emerald-600">成功 {batch.done}</span>
+                        {batch.failed > 0 && (
+                          <span className="text-destructive ml-2">失败 {batch.failed}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-xs text-muted-foreground">
                   将对所有活跃问题在所有启用的平台上执行一次采集，采集将在后台并发执行（默认并发数5）
@@ -514,14 +518,14 @@ export default function ConfigCollection() {
                   className="w-full"
                   variant="outline"
                   onClick={() => batchTriggerMutation.mutate()}
-                  disabled={batchTriggerMutation.isPending || !!activeBatchId || !canEdit}
+                  disabled={batchTriggerMutation.isPending || batch.isRunning || !canEdit}
                 >
-                  {batchTriggerMutation.isPending || activeBatchId ? (
+                  {batchTriggerMutation.isPending || batch.isRunning ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Zap className="h-4 w-4 mr-2" />
                   )}
-                  {activeBatchId ? "执行中..." : "开始批量采集"}
+                  {batch.isRunning ? "执行中..." : "开始批量采集"}
                 </Button>
               </CardContent>
             </Card>
