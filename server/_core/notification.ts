@@ -1,69 +1,88 @@
-import { TRPCError } from "@trpc/server";
+import * as db from "../db";
+import { sendFeishu, sendTelegram, sendEmail } from "./senders";
 
-export type NotificationPayload = {
+const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
+function isInSilentHours(silentStart: string | null, silentEnd: string | null): boolean {
+  if (!silentStart || !silentEnd) return false;
+  // Get current time in Asia/Shanghai
+  const now = new Date();
+  const shanghaiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+  const hh = shanghaiTime.getHours();
+  const mm = shanghaiTime.getMinutes();
+  const current = hh * 60 + mm;
+  const [sh, sm] = silentStart.split(":").map(Number);
+  const [eh, em] = silentEnd.split(":").map(Number);
+  const start = sh * 60 + sm;
+  const end = eh * 60 + em;
+  if (start <= end) return current >= start && current < end;
+  // Crosses midnight (e.g. 23:00 - 08:00)
+  return current >= start || current < end;
+}
+
+export async function dispatchNotification(payload: {
+  messageType: "alert" | "batch_summary";
+  alertId?: number;
+  batchId?: string;
   title: string;
   content: string;
-};
+  severity?: string;
+  dedupKey?: string;
+}): Promise<void> {
+  try {
+    const configs = await db.listNotificationConfigs();
+    for (const config of configs) {
+      if (!config.isEnabled) continue;
 
-const TITLE_MAX_LENGTH = 1200;
-const CONTENT_MAX_LENGTH = 20000;
+      // Check severity threshold
+      if (payload.severity && config.minSeverity) {
+        const payloadRank = SEVERITY_RANK[payload.severity] || 0;
+        const minRank = SEVERITY_RANK[config.minSeverity] || 0;
+        if (payloadRank < minRank) continue;
+      }
 
-const trimValue = (value: string): string => value.trim();
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === "string" && value.trim().length > 0;
+      // Check silent hours
+      if (isInSilentHours(config.silentStart, config.silentEnd)) continue;
 
-const buildEndpointUrl = (baseUrl: string): string => {
-  const normalizedBase = baseUrl.endsWith("/")
-    ? baseUrl
-    : `${baseUrl}/`;
-  return new URL(
-    "webdevtoken.v1.WebDevService/SendNotification",
-    normalizedBase
-  ).toString();
-};
+      // Dedup check
+      if (payload.dedupKey) {
+        const key = `${config.channel}:${payload.dedupKey}`;
+        const recent = await db.findRecentNotificationLog(key, 24);
+        if (recent) continue;
+      }
 
-const validatePayload = (input: NotificationPayload): NotificationPayload => {
-  if (!isNonEmptyString(input.title)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification title is required.",
-    });
+      // Send
+      let result: { success: boolean; error?: string } = { success: false, error: "Unknown channel" };
+      const msg = { title: payload.title, content: payload.content, severity: payload.severity };
+
+      if (config.channel === "feishu" && config.webhookUrl) {
+        result = await sendFeishu(config.webhookUrl, msg);
+      } else if (config.channel === "telegram" && config.botToken && config.chatId) {
+        result = await sendTelegram(config.botToken, config.chatId, msg);
+      } else if (config.channel === "email" && config.smtpHost && config.smtpUser && config.emailFrom) {
+        result = await sendEmail({
+          smtpHost: config.smtpHost, smtpPort: config.smtpPort || 465,
+          smtpUser: config.smtpUser, smtpPass: config.smtpPass || "",
+          from: config.emailFrom, to: (config.emailTo as string[]) || [],
+        }, msg);
+      } else {
+        continue; // Channel not fully configured
+      }
+
+      // Log
+      await db.createNotificationLog({
+        channel: config.channel,
+        alertId: payload.alertId || null,
+        batchId: payload.batchId || null,
+        messageType: payload.messageType,
+        title: payload.title,
+        content: payload.content,
+        success: result.success,
+        errorMessage: result.error || null,
+        dedupKey: payload.dedupKey ? `${config.channel}:${payload.dedupKey}` : null,
+      });
+    }
+  } catch (err: any) {
+    console.error("[Notification] dispatch failed:", err.message);
   }
-  if (!isNonEmptyString(input.content)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Notification content is required.",
-    });
-  }
-
-  const title = trimValue(input.title);
-  const content = trimValue(input.content);
-
-  if (title.length > TITLE_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`,
-    });
-  }
-
-  if (content.length > CONTENT_MAX_LENGTH) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`,
-    });
-  }
-
-  return { title, content };
-};
-
-/**
- * Dispatches a project-owner notification through the Manus Notification Service.
- * Returns `true` if the request was accepted, `false` when the upstream service
- * cannot be reached (callers can fall back to email/slack). Validation errors
- * bubble up as TRPC errors so callers can fix the payload.
- */
-export async function notifyOwner(
-  payload: NotificationPayload
-): Promise<boolean> {
-  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notification service is not available" });
 }

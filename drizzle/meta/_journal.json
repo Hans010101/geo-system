@@ -43,6 +43,13 @@
       "when": 1775733303975,
       "tag": "0005_nifty_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1776327402307,
+      "tag": "0006_flashy_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,8 @@ import {
   urlMatchRules,
   globalApiKeys,
   schedulerConfigs,
+  notificationConfigs,
+  notificationLogs,
   type InsertQuestion,
   type InsertCollection,
   type InsertCitation,
@@ -27,6 +29,8 @@ import {
   type InsertUrlMatchRule,
   type InsertGlobalApiKey,
   type InsertSchedulerConfig,
+  type InsertNotificationConfig,
+  type InsertNotificationLog,
 } from "../drizzle/schema";
 
 
@@ -637,10 +641,11 @@ export async function listAlerts(filters?: { severity?: string; isRead?: boolean
   return { data, total: totalResult[0]?.count || 0 };
 }
 
-export async function createAlert(data: InsertAlert) {
+export async function createAlert(data: InsertAlert): Promise<number | undefined> {
   const db = await getDb();
-  if (!db) return;
-  await db.insert(alerts).values(data);
+  if (!db) return undefined;
+  const result = await db.insert(alerts).values(data);
+  return (result as any)[0]?.insertId;
 }
 
 export async function markAlertRead(id: number) {
@@ -953,4 +958,76 @@ export async function upsertSchedulerConfig(data: Partial<InsertSchedulerConfig>
       lastRunAt: data.lastRunAt ?? null,
     });
   }
+}
+
+// ==================== Notification Config Helpers ====================
+export async function listNotificationConfigs() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(notificationConfigs).orderBy(asc(notificationConfigs.id));
+}
+
+export async function upsertNotificationConfig(data: Partial<InsertNotificationConfig> & { channel: "feishu" | "telegram" | "email" }) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(notificationConfigs).where(eq(notificationConfigs.channel, data.channel)).limit(1);
+  if (existing.length > 0) {
+    const updateSet: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (k !== "channel" && k !== "id" && v !== undefined) updateSet[k] = v;
+    }
+    if (Object.keys(updateSet).length > 0) {
+      await db.update(notificationConfigs).set(updateSet).where(eq(notificationConfigs.id, existing[0].id));
+    }
+  } else {
+    await db.insert(notificationConfigs).values(data as InsertNotificationConfig);
+  }
+}
+
+// ==================== Notification Log Helpers ====================
+export async function createNotificationLog(data: InsertNotificationLog) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(notificationLogs).values(data);
+}
+
+export async function findRecentNotificationLog(dedupKey: string, withinHours: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const cutoff = new Date(Date.now() - withinHours * 60 * 60 * 1000);
+  const result = await db.select().from(notificationLogs)
+    .where(and(
+      eq(notificationLogs.dedupKey, dedupKey),
+      eq(notificationLogs.success, true),
+      gte(notificationLogs.createdAt, cutoff),
+    ))
+    .limit(1);
+  return result[0];
+}
+
+export async function listNotificationLogs(filters?: { channel?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const conditions = [];
+  if (filters?.channel) conditions.push(eq(notificationLogs.channel, filters.channel as any));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, totalResult] = await Promise.all([
+    db.select().from(notificationLogs).where(whereClause).orderBy(desc(notificationLogs.createdAt)).limit(filters?.limit || 50).offset(filters?.offset || 0),
+    db.select({ count: count() }).from(notificationLogs).where(whereClause),
+  ]);
+  return { data, total: totalResult[0]?.count || 0 };
+}
+
+export async function listAlertsByBatchCollections(batchId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: alerts.id, alertType: alerts.alertType, severity: alerts.severity,
+    title: alerts.title, description: alerts.description,
+    relatedPlatform: alerts.relatedPlatform, relatedQuestionId: alerts.relatedQuestionId,
+  })
+  .from(alerts)
+  .innerJoin(collections, eq(alerts.relatedCollectionId, collections.id))
+  .where(eq(collections.batchId, batchId))
+  .orderBy(desc(alerts.createdAt));
 }

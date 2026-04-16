@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -18,9 +19,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import {
-  Settings, Loader2, Eye, EyeOff, Key, Globe2, Plus, Trash2, ChevronRight, Check,
+  Settings, Loader2, Eye, EyeOff, Key, Globe2, Plus, Trash2, ChevronRight, Check, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -28,11 +29,13 @@ import {
 } from "@shared/geo-types";
 import { useRole } from "@/hooks/useRole";
 
+const NotificationSettings = lazy(() => import("./NotificationSettings"));
+
 // All known platforms for coverage selector
 const ALL_PLATFORMS_LIST = PLATFORMS as unknown as Platform[];
 
 export default function ConfigPlatforms() {
-  const { canEdit } = useRole();
+  const { canEdit, isDeveloper } = useRole();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<any>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -115,12 +118,6 @@ export default function ConfigPlatforms() {
   const cnPlatforms = ["wenxin", "doubao", "kimi", "deepseek", "minimax", "tongyi", "zhipu", "baichuan", "hunyuan", "tiangong"];
   const intlPlatforms = ["chatgpt", "perplexity", "gemini", "claude", "copilot", "mistral", "grok", "llama"];
 
-  const filteredPlatforms = useMemo(() => {
-    if (tab === "cn") return configuredPlatforms.filter((p) => cnPlatforms.includes(p));
-    if (tab === "intl") return configuredPlatforms.filter((p) => intlPlatforms.includes(p));
-    return configuredPlatforms;
-  }, [tab, configuredPlatforms]);
-
   const enabledCount = platformList?.filter((p) => p.isEnabled).length || 0;
   const globalKeyCount = globalKeysList?.filter((k) => k.isActive).length || 0;
 
@@ -178,111 +175,83 @@ export default function ConfigPlatforms() {
       </Card>
 
       {/* Platform tabs + Add button */}
-      <div className="flex items-center justify-between">
-        <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="all">全部 ({configuredPlatforms.length})</TabsTrigger>
             <TabsTrigger value="cn">国内 ({configuredPlatforms.filter(p => cnPlatforms.includes(p)).length})</TabsTrigger>
             <TabsTrigger value="intl">国际 ({configuredPlatforms.filter(p => intlPlatforms.includes(p)).length})</TabsTrigger>
+            {isDeveloper && <TabsTrigger value="notifications">通知设置</TabsTrigger>}
           </TabsList>
-        </Tabs>
-        <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5" disabled={!canEdit}>
-          <Plus className="h-4 w-4" />
-          添加平台
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5" disabled={!canEdit}>
+            <Plus className="h-4 w-4" />
+            添加平台
+          </Button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredPlatforms.map((platform) => {
-            const config = getConfig(platform);
-            const isEnabled = config?.isEnabled ?? false;
-            const hasCustomApi = !!(config?.apiKeyEncrypted || config?.apiBaseUrl);
-            const label = config?.displayName || PLATFORM_LABELS[platform as Platform] || platform;
-            const color = PLATFORM_COLORS[platform as Platform] || "#6b7280";
 
-            return (
-              <Card key={platform} className={!isEnabled ? "opacity-60" : ""}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="h-9 w-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0"
-                        style={{ backgroundColor: color }}
-                      >
-                        {label.charAt(0)}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-sm">{label}</h3>
-                        <p className="text-[10px] text-muted-foreground">{platform}</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={isEnabled}
-                      onCheckedChange={() => handleToggle(platform, isEnabled)}
-                      disabled={upsertMutation.isPending || !canEdit}
-                    />
-                  </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <TabsContent value="all" className="space-y-4 mt-4">
+              <PlatformGroupCollapsible
+                title="国内平台"
+                platforms={configuredPlatforms.filter(p => cnPlatforms.includes(p))}
+                platformList={platformList}
+                getConfig={getConfig}
+                canEdit={canEdit}
+                upsertMutation={upsertMutation}
+                handleToggle={handleToggle}
+                handleEdit={handleEdit}
+                setDeleteConfirmPlatform={setDeleteConfirmPlatform}
+              />
+              <PlatformGroupCollapsible
+                title="国际平台"
+                platforms={configuredPlatforms.filter(p => intlPlatforms.includes(p))}
+                platformList={platformList}
+                getConfig={getConfig}
+                canEdit={canEdit}
+                upsertMutation={upsertMutation}
+                handleToggle={handleToggle}
+                handleEdit={handleEdit}
+                setDeleteConfirmPlatform={setDeleteConfirmPlatform}
+              />
+            </TabsContent>
 
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">模型</span>
-                      <span className="truncate max-w-[140px]">
-                        {config?.modelVersion || PLATFORM_OPENROUTER_MODELS[platform as Platform] || "—"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">频率</span>
-                      <span>{config?.collectFrequency || "weekly"}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">API</span>
-                      {hasCustomApi ? (
-                        <Badge variant="outline" className="text-[10px] px-1.5 text-emerald-600 border-emerald-600">
-                          <Key className="h-2.5 w-2.5 mr-0.5" />
-                          独立配置
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">使用全局</span>
-                      )}
-                    </div>
-                    {PLATFORM_RECOMMENDED_PROVIDER[platform as Platform] && !hasCustomApi && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">推荐</span>
-                        <span className="text-[10px] text-orange-600">推荐{PLATFORM_RECOMMENDED_PROVIDER[platform as Platform]}</span>
-                      </div>
-                    )}
-                  </div>
+            <TabsContent value="cn" className="mt-4">
+              <PlatformGrid
+                platforms={configuredPlatforms.filter(p => cnPlatforms.includes(p))}
+                getConfig={getConfig}
+                canEdit={canEdit}
+                upsertMutation={upsertMutation}
+                handleToggle={handleToggle}
+                handleEdit={handleEdit}
+                setDeleteConfirmPlatform={setDeleteConfirmPlatform}
+              />
+            </TabsContent>
 
-                  <div className={`flex gap-2 mt-3${!canEdit ? " invisible" : ""}`}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleEdit(platform)}
-                    >
-                      <Settings className="h-3.5 w-3.5 mr-1.5" />
-                      配置
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
-                      onClick={() => setDeleteConfirmPlatform(platform)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+            <TabsContent value="intl" className="mt-4">
+              <PlatformGrid
+                platforms={configuredPlatforms.filter(p => intlPlatforms.includes(p))}
+                getConfig={getConfig}
+                canEdit={canEdit}
+                upsertMutation={upsertMutation}
+                handleToggle={handleToggle}
+                handleEdit={handleEdit}
+                setDeleteConfirmPlatform={setDeleteConfirmPlatform}
+              />
+            </TabsContent>
+
+            <TabsContent value="notifications">
+              <Suspense fallback={<div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <NotificationSettings />
+              </Suspense>
+            </TabsContent>
+          </>
+        )}
+      </Tabs>
 
       {/* ========== Global API Keys Sheet ========== */}
       <GlobalApiKeysSheet
@@ -423,6 +392,141 @@ export default function ConfigPlatforms() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+/* ==================== Platform Grid & Collapsible ==================== */
+
+function PlatformCard({
+  platform, getConfig, canEdit, upsertMutation, handleToggle, handleEdit, setDeleteConfirmPlatform,
+}: {
+  platform: string;
+  getConfig: (p: string) => any;
+  canEdit: boolean;
+  upsertMutation: { isPending: boolean };
+  handleToggle: (p: string, enabled: boolean) => void;
+  handleEdit: (p: string) => void;
+  setDeleteConfirmPlatform: (p: string | null) => void;
+}) {
+  const config = getConfig(platform);
+  const isEnabled = config?.isEnabled ?? false;
+  const hasCustomApi = !!(config?.apiKeyEncrypted || config?.apiBaseUrl);
+  const label = config?.displayName || PLATFORM_LABELS[platform as Platform] || platform;
+  const color = PLATFORM_COLORS[platform as Platform] || "#6b7280";
+
+  return (
+    <Card className={!isEnabled ? "opacity-60" : ""}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="h-9 w-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0"
+              style={{ backgroundColor: color }}
+            >
+              {label.charAt(0)}
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm">{label}</h3>
+              <p className="text-[10px] text-muted-foreground">{platform}</p>
+            </div>
+          </div>
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={() => handleToggle(platform, isEnabled)}
+            disabled={upsertMutation.isPending || !canEdit}
+          />
+        </div>
+
+        <div className="space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">模型</span>
+            <span className="truncate max-w-[140px]">
+              {config?.modelVersion || PLATFORM_OPENROUTER_MODELS[platform as Platform] || "—"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">频率</span>
+            <span>{config?.collectFrequency || "weekly"}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground">API</span>
+            {hasCustomApi ? (
+              <Badge variant="outline" className="text-[10px] px-1.5 text-emerald-600 border-emerald-600">
+                <Key className="h-2.5 w-2.5 mr-0.5" />
+                独立配置
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground">使用全局</span>
+            )}
+          </div>
+          {PLATFORM_RECOMMENDED_PROVIDER[platform as Platform] && !hasCustomApi && (
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">推荐</span>
+              <span className="text-[10px] text-orange-600">推荐{PLATFORM_RECOMMENDED_PROVIDER[platform as Platform]}</span>
+            </div>
+          )}
+        </div>
+
+        <div className={`flex gap-2 mt-3${!canEdit ? " invisible" : ""}`}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => handleEdit(platform)}
+          >
+            <Settings className="h-3.5 w-3.5 mr-1.5" />
+            配置
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
+            onClick={() => setDeleteConfirmPlatform(platform)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type PlatformGridProps = {
+  platforms: string[];
+  getConfig: (p: string) => any;
+  canEdit: boolean;
+  upsertMutation: { isPending: boolean };
+  handleToggle: (p: string, enabled: boolean) => void;
+  handleEdit: (p: string) => void;
+  setDeleteConfirmPlatform: (p: string | null) => void;
+};
+
+function PlatformGrid(props: PlatformGridProps) {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      {props.platforms.map((platform) => (
+        <PlatformCard key={platform} platform={platform} {...props} />
+      ))}
+    </div>
+  );
+}
+
+function PlatformGroupCollapsible({
+  title, platforms, platformList, ...gridProps
+}: PlatformGridProps & { title: string; platformList: any[] | undefined }) {
+  const enabledCount = platforms.filter(p => platformList?.find(c => c.platform === p)?.isEnabled).length;
+
+  return (
+    <Collapsible defaultOpen>
+      <CollapsibleTrigger className="flex items-center gap-2 w-full group">
+        <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
+        <span className="text-sm font-medium">{title}</span>
+        <Badge variant="secondary" className="text-[10px]">{enabledCount}/{platforms.length} 启用</Badge>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3">
+        <PlatformGrid platforms={platforms} {...gridProps} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

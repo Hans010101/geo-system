@@ -270,3 +270,45 @@ export const schedulerConfigs = mysqlTable("schedulerConfigs", {
 
 export type SchedulerConfig = typeof schedulerConfigs.$inferSelect;
 export type InsertSchedulerConfig = typeof schedulerConfigs.$inferInsert;
+
+// ==================== Notification Configs (通知渠道配置) ====================
+export const notificationConfigs = mysqlTable("notificationConfigs", {
+  id: int("id").autoincrement().primaryKey(),
+  channel: mysqlEnum("channel", ["feishu", "telegram", "email"]).notNull(),
+  isEnabled: boolean("isEnabled").default(false).notNull(),
+  webhookUrl: text("webhookUrl"),
+  botToken: varchar("botToken", { length: 256 }),
+  chatId: varchar("chatId", { length: 64 }),
+  smtpHost: varchar("smtpHost", { length: 128 }),
+  smtpPort: int("smtpPort"),
+  smtpUser: varchar("smtpUser", { length: 128 }),
+  smtpPass: varchar("smtpPass", { length: 256 }),
+  emailFrom: varchar("emailFrom", { length: 256 }),
+  emailTo: json("emailTo"),
+  minSeverity: mysqlEnum("minSeverity", ["critical", "high", "medium", "low"]).default("high").notNull(),
+  silentStart: varchar("silentStart", { length: 5 }).default("23:00"),
+  silentEnd: varchar("silentEnd", { length: 5 }).default("08:00"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type NotificationConfig = typeof notificationConfigs.$inferSelect;
+export type InsertNotificationConfig = typeof notificationConfigs.$inferInsert;
+
+// ==================== Notification Logs (推送日志) ====================
+export const notificationLogs = mysqlTable("notificationLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  channel: mysqlEnum("channel", ["feishu", "telegram", "email"]).notNull(),
+  alertId: int("alertId"),
+  batchId: varchar("batchId", { length: 64 }),
+  messageType: mysqlEnum("messageType", ["alert", "batch_summary"]).default("alert").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  content: text("content"),
+  success: boolean("success").notNull(),
+  errorMessage: text("errorMessage"),
+  dedupKey: varchar("dedupKey", { length: 256 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type NotificationLog = typeof notificationLogs.$inferSelect;
+export type InsertNotificationLog = typeof notificationLogs.$inferInsert;

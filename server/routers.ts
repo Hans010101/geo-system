@@ -8,6 +8,8 @@ import { invokeLLM } from "./_core/llm";
 import { nanoid } from "nanoid";
 import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform } from "@shared/geo-types";
 import { ENV } from "./_core/env";
+import { dispatchNotification } from "./_core/notification";
+import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -438,30 +440,48 @@ async function checkAlerts(
     if (!analysis) return;
 
     if (analysis.sentimentScore && analysis.sentimentScore <= 2) {
-      await db.createAlert({
-        alertType: "sentiment_drop",
-        severity: analysis.sentimentScore === 1 ? "critical" : "high",
+      const severity = analysis.sentimentScore === 1 ? "critical" : "high";
+      const alertData = {
+        alertType: "sentiment_drop" as const,
+        severity: severity as "critical" | "high",
         title: `${platform} 对问题 ${question.questionId} 给出负面回答`,
         description: analysis.sentimentReasoning || `情感评分: ${analysis.sentimentScore}/5`,
         relatedCollectionId: collectionId,
         relatedQuestionId: question.questionId,
         relatedPlatform: platform,
-      });
+      };
+      const alertId = await db.createAlert(alertData);
       log.info(`Alert created: sentiment_drop for ${platform}`, { traceId });
+
+      // Push notification
+      const msg = formatAlertMessage({ ...alertData, severity });
+      dispatchNotification({
+        messageType: "alert", alertId, severity,
+        title: msg.title, content: msg.content,
+        dedupKey: `${question.questionId}:${platform}:sentiment_drop`,
+      }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
     }
 
     if (analysis.factualAccuracy === "inaccurate") {
       const claims = (analysis.inaccurateClaims as string[]) || [];
-      await db.createAlert({
-        alertType: "fact_missing",
-        severity: "medium",
+      const alertData = {
+        alertType: "fact_missing" as const,
+        severity: "medium" as const,
         title: `${platform} 对问题 ${question.questionId} 存在事实错误`,
         description: claims.length > 0 ? `不准确声明: ${claims.join("; ")}` : "检测到事实性错误",
         relatedCollectionId: collectionId,
         relatedQuestionId: question.questionId,
         relatedPlatform: platform,
-      });
+      };
+      const alertId = await db.createAlert(alertData);
       log.info(`Alert created: fact_missing for ${platform}`, { traceId });
+
+      const msg = formatAlertMessage({ ...alertData, severity: "medium" });
+      dispatchNotification({
+        messageType: "alert", alertId, severity: "medium",
+        title: msg.title, content: msg.content,
+        dedupKey: `${question.questionId}:${platform}:fact_missing`,
+      }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
     }
   } catch (error: any) {
     log.error(`Alert check failed: ${error.message}`, { traceId });
@@ -880,6 +900,28 @@ const collectionsRouter = router({
 
       // Recount remaining
       const updatedProgress = await db.getBatchProgress(input.batchId);
+
+      // Batch completion notification
+      if (updatedProgress.pending === 0) {
+        try {
+          const batchAlerts = await db.listAlertsByBatchCollections(input.batchId);
+          if (batchAlerts.length > 0) {
+            const msg = formatBatchSummary({
+              batchId: input.batchId,
+              total: updatedProgress.total,
+              completed: updatedProgress.completed,
+              failed: updatedProgress.failed,
+              alertCount: batchAlerts.length,
+              alerts: batchAlerts.map(a => ({ severity: a.severity, title: a.title })),
+            });
+            dispatchNotification({
+              messageType: "batch_summary", batchId: input.batchId,
+              title: msg.title, content: msg.content,
+              severity: batchAlerts.some(a => a.severity === "critical") ? "critical" : "high",
+            }).catch(() => {});
+          }
+        } catch {}
+      }
 
       return {
         completed,
@@ -1565,6 +1607,68 @@ async function initScheduler() {
 })();
 
 // ==================== Users Router (developer only) ====================
+// ==================== Notifications Router (developer only) ====================
+const notificationsRouter = router({
+  listConfigs: developerProcedure.query(async () => {
+    return db.listNotificationConfigs();
+  }),
+
+  upsertConfig: developerProcedure
+    .input(z.object({
+      channel: z.enum(["feishu", "telegram", "email"]),
+      isEnabled: z.boolean().optional(),
+      webhookUrl: z.string().optional().nullable(),
+      botToken: z.string().optional().nullable(),
+      chatId: z.string().optional().nullable(),
+      smtpHost: z.string().optional().nullable(),
+      smtpPort: z.number().optional().nullable(),
+      smtpUser: z.string().optional().nullable(),
+      smtpPass: z.string().optional().nullable(),
+      emailFrom: z.string().optional().nullable(),
+      emailTo: z.array(z.string()).optional().nullable(),
+      minSeverity: z.enum(["critical", "high", "medium", "low"]).optional(),
+      silentStart: z.string().optional().nullable(),
+      silentEnd: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      await db.upsertNotificationConfig(input as any);
+      return { success: true };
+    }),
+
+  testChannel: developerProcedure
+    .input(z.object({ channel: z.enum(["feishu", "telegram", "email"]) }))
+    .mutation(async ({ input }) => {
+      const config = (await db.listNotificationConfigs()).find(c => c.channel === input.channel);
+      if (!config) return { success: false, error: "Channel not configured" };
+
+      const { sendFeishu, sendTelegram, sendEmail } = await import("./_core/senders");
+      const testMsg = { title: "TRON GEO 系统 - 测试通知", content: "这是一条测试消息，确认推送渠道配置正确。\n时间: " + new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) };
+
+      if (input.channel === "feishu" && config.webhookUrl) {
+        return sendFeishu(config.webhookUrl, testMsg);
+      } else if (input.channel === "telegram" && config.botToken && config.chatId) {
+        return sendTelegram(config.botToken, config.chatId, testMsg);
+      } else if (input.channel === "email" && config.smtpHost && config.smtpUser && config.emailFrom) {
+        return sendEmail({
+          smtpHost: config.smtpHost, smtpPort: config.smtpPort || 465,
+          smtpUser: config.smtpUser, smtpPass: config.smtpPass || "",
+          from: config.emailFrom, to: (config.emailTo as string[]) || [],
+        }, testMsg);
+      }
+      return { success: false, error: "Channel not fully configured" };
+    }),
+
+  listLogs: developerProcedure
+    .input(z.object({
+      channel: z.string().optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      return db.listNotificationLogs(input || {});
+    }),
+});
+
 const usersRouter = router({
   list: developerProcedure.query(async () => {
     const all = await db.listUsers();
@@ -1640,6 +1744,7 @@ export const appRouter = router({
   urlMatchRules: urlMatchRulesRouter,
   scheduler: schedulerRouter,
   users: usersRouter,
+  notifications: notificationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

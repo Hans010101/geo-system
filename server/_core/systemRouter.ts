@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { notifyOwner } from "./notification";
+import { dispatchNotification } from "./notification";
 import { adminProcedure, publicProcedure, router } from "./trpc";
 
 export const systemRouter = router({
@@ -21,9 +21,12 @@ export const systemRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const delivered = await notifyOwner(input);
-      return {
-        success: delivered,
-      } as const;
+      await dispatchNotification({
+        messageType: "alert",
+        title: input.title,
+        content: input.content,
+        severity: "high",
+      });
+      return { success: true } as const;
     }),
 });
