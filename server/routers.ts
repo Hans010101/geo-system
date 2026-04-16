@@ -769,6 +769,33 @@ const collectionsRouter = router({
       return { success: true, batchId, totalCreated };
     }),
 
+  // Single platform → all active questions
+  triggerAllQuestions: adminProcedure
+    .input(z.object({ platform: z.string() }))
+    .mutation(async ({ input }) => {
+      const questionsList = await db.listQuestions({ status: "active" });
+      if (questionsList.length === 0) {
+        return { success: false, message: "No active questions", batchId: "", totalCreated: 0 };
+      }
+
+      const batchId = `single-p-${nanoid(8)}`;
+      let totalCreated = 0;
+      for (const question of questionsList) {
+        const id = await db.createCollection({
+          questionId: question.questionId,
+          questionText: question.text,
+          platform: input.platform,
+          language: question.language,
+          timestamp: Date.now(),
+          status: "pending",
+          batchId,
+        });
+        if (id) totalCreated++;
+      }
+
+      return { success: true, batchId, totalCreated };
+    }),
+
   // Batch trigger: creates all pending records, NO background execution
   batchTrigger: adminProcedure
     .input(

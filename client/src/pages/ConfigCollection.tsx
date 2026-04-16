@@ -130,16 +130,18 @@ export default function ConfigCollection() {
   const [selectedQuestion, setSelectedQuestion] = useState<string>("");
   const [selectedQuestionAll, setSelectedQuestionAll] = useState<string>("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
+  const [selectedPlatformAll, setSelectedPlatformAll] = useState<string>("");
   const [detailId, setDetailId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
   const [page, setPage] = useState(0);
 
-  // Two independent polling channels
+  // Three independent polling channels
   const singleQ = useBatchPoller();
+  const singleP = useBatchPoller();
   const batch = useBatchPoller();
-  const anyRunning = singleQ.isRunning || batch.isRunning;
+  const anyRunning = singleQ.isRunning || singleP.isRunning || batch.isRunning;
 
   const utils = trpc.useUtils();
 
@@ -159,6 +161,7 @@ export default function ConfigCollection() {
 
   // Refresh list when any poller finishes
   const prevSingleQ = useRef(singleQ.isRunning);
+  const prevSingleP = useRef(singleP.isRunning);
   const prevBatch = useRef(batch.isRunning);
   useEffect(() => {
     if (prevSingleQ.current && !singleQ.isRunning) {
@@ -167,6 +170,13 @@ export default function ConfigCollection() {
     }
     prevSingleQ.current = singleQ.isRunning;
   }, [singleQ.isRunning]);
+  useEffect(() => {
+    if (prevSingleP.current && !singleP.isRunning) {
+      toast.success(`单模型采集完成！成功 ${singleP.done} 条，失败 ${singleP.failed} 条`);
+      utils.collections.list.invalidate();
+    }
+    prevSingleP.current = singleP.isRunning;
+  }, [singleP.isRunning]);
   useEffect(() => {
     if (prevBatch.current && !batch.isRunning) {
       toast.success(`批量采集完成！成功 ${batch.done} 条，失败 ${batch.failed} 条`);
@@ -191,6 +201,18 @@ export default function ConfigCollection() {
     onSuccess: (data) => {
       if (data.success && data.batchId) {
         singleQ.start(data.batchId, data.totalCreated || 0);
+        toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
+      } else {
+        toast.error(data.message || "采集失败");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const triggerAllQuestionsMutation = trpc.collections.triggerAllQuestions.useMutation({
+    onSuccess: (data) => {
+      if (data.success && data.batchId) {
+        singleP.start(data.batchId, data.totalCreated || 0);
         toast.info(`已创建 ${data.totalCreated} 条采集任务，开始执行...`);
       } else {
         toast.error(data.message || "采集失败");
@@ -354,7 +376,7 @@ export default function ConfigCollection() {
         </TabsList>
 
         <TabsContent value="trigger" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Single trigger */}
             <Card>
               <CardHeader className="pb-3">
@@ -467,6 +489,67 @@ export default function ConfigCollection() {
                     <Zap className="h-4 w-4 mr-2" />
                   )}
                   {singleQ.isRunning ? "执行中..." : "开始采集"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Single platform → all questions */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  单模型全问题采集
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">选择平台</label>
+                  <Select value={selectedPlatformAll} onValueChange={setSelectedPlatformAll}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择平台..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {platformConfigs?.filter((p: any) => p.isEnabled).map((p: any) => (
+                        <SelectItem key={p.platform} value={p.platform}>
+                          {PLATFORM_LABELS[p.platform as Platform] || p.platform}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  将采集全部 <strong>{questionsList?.length || 0}</strong> 个活跃问题
+                </p>
+
+                {singleP.isRunning && (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> 采集中...</span>
+                      <span className="font-bold text-primary">{singleP.pct}%</span>
+                    </div>
+                    <Progress value={singleP.pct} className="h-2" />
+                    <div className="text-xs text-muted-foreground">
+                      已完成 {singleP.done + singleP.failed}/{singleP.total}
+                      <span className="text-emerald-600 ml-2">成功 {singleP.done}</span>
+                      {singleP.failed > 0 && <span className="text-destructive ml-2">失败 {singleP.failed}</span>}
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    if (!selectedPlatformAll) { toast.error("请选择一个平台"); return; }
+                    triggerAllQuestionsMutation.mutate({ platform: selectedPlatformAll });
+                  }}
+                  disabled={triggerAllQuestionsMutation.isPending || singleP.isRunning || !selectedPlatformAll || !canEdit}
+                >
+                  {triggerAllQuestionsMutation.isPending || singleP.isRunning ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  {singleP.isRunning ? "执行中..." : "开始采集"}
                 </Button>
               </CardContent>
             </Card>
