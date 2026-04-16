@@ -965,6 +965,19 @@ const collectionsRouter = router({
       return result.data;
     }),
 
+  getLatestByQuestionAndPlatform: protectedProcedure
+    .input(z.object({ questionId: z.string(), platform: z.string() }))
+    .query(async ({ input }) => {
+      const result = await db.listCollections({
+        questionId: input.questionId,
+        platform: input.platform,
+        status: "success",
+        limit: 1,
+        offset: 0,
+      });
+      return { collectionId: result.data[0]?.id ?? null };
+    }),
+
   reanalyze: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {

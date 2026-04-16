@@ -49,6 +49,7 @@ const DOMESTIC_PLATFORMS = ["deepseek", "tongyi", "zhipu", "kimi", "doubao", "mi
 const INTERNATIONAL_PLATFORMS = ["chatgpt", "claude", "copilot", "perplexity", "grok", "gemini", "llama"];
 
 export default function Home() {
+  const utils = trpc.useUtils();
   const [detailId, setDetailId] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [alertPage, setAlertPage] = useState(0);
@@ -120,6 +121,19 @@ export default function Home() {
     });
     exportCsv(`情感热力图_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   }, [heatmapByBrand, activePlatforms, exportCsv]);
+
+  const handleScoreClick = useCallback(async (questionId: string, platform: string) => {
+    try {
+      const result = await utils.collections.getLatestByQuestionAndPlatform.fetch({ questionId, platform });
+      if (result.collectionId) {
+        setDetailId(result.collectionId);
+      } else {
+        toast.info("未找到该问题在该平台的采集记录");
+      }
+    } catch {
+      toast.error("查询采集记录失败");
+    }
+  }, [utils]);
 
   return (
     <div className="space-y-6">
@@ -277,13 +291,24 @@ export default function Home() {
                         <tbody>
                           {items.map((item) => (
                             <tr key={item.questionId} className="border-t border-border/50">
-                              <td className="p-1.5 text-foreground">{item.text}</td>
+                              <td
+                                className="p-1.5 text-foreground cursor-pointer hover:text-primary transition-colors"
+                                onClick={() => window.open(`/questions/${item.questionId}`, '_blank')}
+                                title="在新标签页查看问题详情"
+                              >
+                                {item.text}
+                              </td>
                               {activePlatforms.map((p) => {
                                 const score = item.scores[p];
                                 return (
                                   <td key={p} className="text-center p-1.5">
                                     {score ? (
-                                      <span className="inline-block rounded px-2 py-0.5 font-medium text-white" style={{ backgroundColor: getSentimentColor(score) }}>
+                                      <span
+                                        className="inline-block rounded px-2 py-0.5 font-medium text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+                                        style={{ backgroundColor: getSentimentColor(score) }}
+                                        onClick={() => handleScoreClick(item.questionId, p)}
+                                        title="查看采集详情"
+                                      >
                                         {score.toFixed(1)}
                                       </span>
                                     ) : (
