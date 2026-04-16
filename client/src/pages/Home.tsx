@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import CollectionDetailSheet from "@/components/CollectionDetailSheet";
 import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
@@ -49,7 +49,7 @@ const DOMESTIC_PLATFORMS = ["deepseek", "tongyi", "zhipu", "kimi", "doubao", "mi
 const INTERNATIONAL_PLATFORMS = ["chatgpt", "claude", "copilot", "perplexity", "grok", "gemini", "llama"];
 
 export default function Home() {
-  const [, navigate] = useLocation();
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [alertPage, setAlertPage] = useState(0);
   const range = useMemo(() => getTimeRange(timeRange), [timeRange]);
@@ -218,7 +218,7 @@ export default function Home() {
                   <div
                     key={alert.id}
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${clickable ? "cursor-pointer hover:bg-muted/50" : ""}`}
-                    onClick={clickable ? () => navigate(`/config/collection?detail=${alert.relatedCollectionId}`) : undefined}
+                    onClick={clickable ? () => setDetailId(alert.relatedCollectionId) : undefined}
                   >
                     <div className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }} />
                     <div className="flex-1 min-w-0">
@@ -320,6 +320,13 @@ export default function Home() {
           </CardContent>
         </Card>
       )}
+
+      {/* Collection Detail Sheet */}
+      <CollectionDetailSheet
+        collectionId={detailId}
+        open={detailId !== null}
+        onOpenChange={(open) => { if (!open) setDetailId(null); }}
+      />
     </div>
   );
 }
