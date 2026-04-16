@@ -19,6 +19,7 @@ import ConfigPlatforms from "./pages/ConfigPlatforms";
 import ConfigCollection from "./pages/ConfigCollection";
 import ConfigScheduler from "./pages/ConfigScheduler";
 import ConfigUsers from "./pages/ConfigUsers";
+import ConfigNotifications from "./pages/ConfigNotifications";
 
 function Router() {
   return (
@@ -37,6 +38,7 @@ function Router() {
         <Route path="/config/collection" component={ConfigCollection} />
         <Route path="/config/scheduler" component={ConfigScheduler} />
         <Route path="/config/users" component={ConfigUsers} />
+        <Route path="/config/notifications" component={ConfigNotifications} />
         <Route component={NotFound} />
       </Switch>
     </DashboardLayout>

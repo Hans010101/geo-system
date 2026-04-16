@@ -35,6 +35,7 @@ import {
   Activity,
   Clock,
   Users,
+  Bell as BellIcon,
 } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -352,17 +353,30 @@ function DashboardLayoutContent({
                   );
                 })}
                 {user?.role === "developer" && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      isActive={location === "/config/users"}
-                      onClick={() => setLocation("/config/users")}
-                      tooltip="用户管理"
-                      className="h-9 transition-all font-normal text-sm"
-                    >
-                      <Users className={`h-4 w-4 ${location === "/config/users" ? "text-sidebar-primary" : ""}`} />
-                      <span>用户管理</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        isActive={location === "/config/notifications"}
+                        onClick={() => setLocation("/config/notifications")}
+                        tooltip="通知设置"
+                        className="h-9 transition-all font-normal text-sm"
+                      >
+                        <BellIcon className={`h-4 w-4 ${location === "/config/notifications" ? "text-sidebar-primary" : ""}`} />
+                        <span>通知设置</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        isActive={location === "/config/users"}
+                        onClick={() => setLocation("/config/users")}
+                        tooltip="用户管理"
+                        className="h-9 transition-all font-normal text-sm"
+                      >
+                        <Users className={`h-4 w-4 ${location === "/config/users" ? "text-sidebar-primary" : ""}`} />
+                        <span>用户管理</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
                 )}
               </SidebarMenu>
             </div>

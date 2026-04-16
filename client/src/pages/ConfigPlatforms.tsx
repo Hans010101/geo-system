@@ -19,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo } from "react";
 import {
   Settings, Loader2, Eye, EyeOff, Key, Globe2, Plus, Trash2, ChevronRight, Check, ChevronDown,
 } from "lucide-react";
@@ -29,13 +29,11 @@ import {
 } from "@shared/geo-types";
 import { useRole } from "@/hooks/useRole";
 
-const NotificationSettings = lazy(() => import("./NotificationSettings"));
-
 // All known platforms for coverage selector
 const ALL_PLATFORMS_LIST = PLATFORMS as unknown as Platform[];
 
 export default function ConfigPlatforms() {
-  const { canEdit, isDeveloper } = useRole();
+  const { canEdit } = useRole();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<any>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -181,7 +179,6 @@ export default function ConfigPlatforms() {
             <TabsTrigger value="all">全部 ({configuredPlatforms.length})</TabsTrigger>
             <TabsTrigger value="cn">国内 ({configuredPlatforms.filter(p => cnPlatforms.includes(p)).length})</TabsTrigger>
             <TabsTrigger value="intl">国际 ({configuredPlatforms.filter(p => intlPlatforms.includes(p)).length})</TabsTrigger>
-            {isDeveloper && <TabsTrigger value="notifications">通知设置</TabsTrigger>}
           </TabsList>
           <Button size="sm" onClick={() => setAddPlatformDialogOpen(true)} className="gap-1.5" disabled={!canEdit}>
             <Plus className="h-4 w-4" />
@@ -244,11 +241,6 @@ export default function ConfigPlatforms() {
               />
             </TabsContent>
 
-            <TabsContent value="notifications">
-              <Suspense fallback={<div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-                <NotificationSettings />
-              </Suspense>
-            </TabsContent>
           </>
         )}
       </Tabs>
