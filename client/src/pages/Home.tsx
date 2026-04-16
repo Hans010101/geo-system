@@ -225,6 +225,13 @@ export default function Home() {
             <div className="space-y-2">
               {alertsList.map((alert) => {
                 const clickable = !!alert.relatedCollectionId;
+                const platformLabel = alert.relatedPlatform ? (PLATFORM_LABELS[alert.relatedPlatform as Platform] || alert.relatedPlatform) : "";
+                const qText = (alert as any).questionText as string | null;
+                const truncatedQ = qText ? (qText.length > 30 ? qText.slice(0, 30) + "..." : qText) : null;
+                const alertTypeLabel = alert.alertType === "sentiment_drop" ? "负面回答" : alert.alertType === "fact_missing" ? "事实错误" : alert.alertType === "coverage_decline" ? "覆盖率下降" : "预警";
+                const richTitle = platformLabel && truncatedQ
+                  ? `${platformLabel} 对问题\u201C${truncatedQ}\u201D给出${alertTypeLabel}`
+                  : alert.title;
                 return (
                   <div
                     key={alert.id}
@@ -234,8 +241,8 @@ export default function Home() {
                     <div className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{alert.title}</p>
-                        <Badge variant="outline" className="text-[10px] px-1.5" style={{ color: SEVERITY_COLORS[alert.severity], borderColor: SEVERITY_COLORS[alert.severity] }}>
+                        <p className="text-sm font-medium" title={qText || alert.title}>{richTitle}</p>
+                        <Badge variant="outline" className="text-[10px] px-1.5 shrink-0" style={{ color: SEVERITY_COLORS[alert.severity], borderColor: SEVERITY_COLORS[alert.severity] }}>
                           {SEVERITY_LABELS[alert.severity]}
                         </Badge>
                       </div>

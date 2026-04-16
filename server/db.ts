@@ -612,7 +612,25 @@ export async function listAlerts(filters?: { severity?: string; isRead?: boolean
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [data, totalResult] = await Promise.all([
-    db.select().from(alerts).where(whereClause).orderBy(desc(alerts.createdAt)).limit(filters?.limit || 100).offset(filters?.offset || 0),
+    db.select({
+      id: alerts.id,
+      alertType: alerts.alertType,
+      severity: alerts.severity,
+      title: alerts.title,
+      description: alerts.description,
+      relatedCollectionId: alerts.relatedCollectionId,
+      relatedQuestionId: alerts.relatedQuestionId,
+      relatedPlatform: alerts.relatedPlatform,
+      isRead: alerts.isRead,
+      createdAt: alerts.createdAt,
+      questionText: questions.text,
+    })
+    .from(alerts)
+    .leftJoin(questions, eq(alerts.relatedQuestionId, questions.questionId))
+    .where(whereClause)
+    .orderBy(desc(alerts.createdAt))
+    .limit(filters?.limit || 100)
+    .offset(filters?.offset || 0),
     db.select({ count: count() }).from(alerts).where(whereClause),
   ]);
 
