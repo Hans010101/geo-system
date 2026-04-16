@@ -1230,6 +1230,7 @@ const alertsRouter = router({
         severity: z.string().optional(),
         isRead: z.boolean().optional(),
         limit: z.number().optional(),
+        offset: z.number().optional(),
       }).optional()
     )
     .query(async ({ input }) => {

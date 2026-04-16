@@ -603,7 +603,7 @@ export async function deleteTargetFact(id: number) {
 }
 
 // ==================== Alerts Helpers ====================
-export async function listAlerts(filters?: { severity?: string; isRead?: boolean; limit?: number }) {
+export async function listAlerts(filters?: { severity?: string; isRead?: boolean; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
@@ -615,7 +615,8 @@ export async function listAlerts(filters?: { severity?: string; isRead?: boolean
     .from(alerts)
     .where(whereClause)
     .orderBy(desc(alerts.createdAt))
-    .limit(filters?.limit || 100);
+    .limit(filters?.limit || 100)
+    .offset(filters?.offset || 0);
 }
 
 export async function createAlert(data: InsertAlert) {

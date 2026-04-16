@@ -3,38 +3,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
   Activity,
   Link2,
   Target,
   Bell,
   BarChart3,
+  Download,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
 import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
   SEVERITY_LABELS,
   SEVERITY_COLORS,
-  SENTIMENT_COLORS,
   BRAND_LINE_LABELS,
   type Platform,
 } from "@shared/geo-types";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
 import { toast } from "sonner";
 
 type TimeRange = "week" | "month" | "quarter";
@@ -51,22 +41,26 @@ function getTimeRange(range: TimeRange) {
   }
 }
 
+const ALERTS_PAGE_SIZE = 5;
+
 export default function Home() {
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
+  const [alertPage, setAlertPage] = useState(0);
   const range = useMemo(() => getTimeRange(timeRange), [timeRange]);
 
   const { data: summary, isLoading: summaryLoading } = trpc.dashboard.summary.useQuery(range, { staleTime: 30000 });
   const { data: heatmapData } = trpc.dashboard.heatmap.useQuery(range, { staleTime: 30000 });
-  const { data: alertsList } = trpc.alerts.list.useQuery({ limit: 5, isRead: false }, { staleTime: 10000 });
+  const { data: alertsList } = trpc.alerts.list.useQuery(
+    { limit: ALERTS_PAGE_SIZE, offset: alertPage * ALERTS_PAGE_SIZE },
+    { staleTime: 10000 }
+  );
+  // Fetch one extra to check if there's a next page
+  const { data: alertsNext } = trpc.alerts.list.useQuery(
+    { limit: 1, offset: (alertPage + 1) * ALERTS_PAGE_SIZE },
+    { staleTime: 10000 }
+  );
+  const hasNextAlertPage = (alertsNext?.length || 0) > 0;
   const { data: questionsList } = trpc.questions.list.useQuery({}, { staleTime: 60000 });
-
-  const questionsMap = useMemo(() => {
-    const map: Record<string, { text: string; brandLine: string }> = {};
-    questionsList?.forEach((q) => {
-      map[q.questionId] = { text: q.text, brandLine: q.brandLine };
-    });
-    return map;
-  }, [questionsList]);
 
   // Collect platforms that actually have data
   const activePlatforms = useMemo(() => {
@@ -146,68 +140,30 @@ export default function Home() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KPICard
-          title="情感均值"
-          value={summary?.overallSentimentAvg?.toFixed(1) || "—"}
-          icon={<Activity className="h-4 w-4" />}
-          loading={summaryLoading}
-          color="text-primary"
-        />
-        <KPICard
-          title="友好来源率"
-          value={summary ? `${summary.friendlySourceRate}%` : "—"}
-          icon={<Link2 className="h-4 w-4" />}
-          loading={summaryLoading}
-          color="text-emerald-600"
-        />
-        <KPICard
-          title="事实覆盖率"
-          value={summary ? `${summary.targetFactsCoverage}%` : "—"}
-          icon={<Target className="h-4 w-4" />}
-          loading={summaryLoading}
-          color="text-blue-600"
-        />
-        <KPICard
-          title="引用命中率"
-          value={summary ? `${summary.ourContentRate}%` : "—"}
-          icon={<BarChart3 className="h-4 w-4" />}
-          loading={summaryLoading}
-          color="text-violet-600"
-        />
-        <KPICard
-          title="未读预警"
-          value={summary?.alertCount?.toString() || "0"}
-          icon={<Bell className="h-4 w-4" />}
-          loading={summaryLoading}
-          color="text-orange-600"
-        />
+        <KPICard title="情感均值" value={summary?.overallSentimentAvg?.toFixed(1) || "—"} icon={<Activity className="h-4 w-4" />} loading={summaryLoading} color="text-primary" />
+        <KPICard title="友好来源率" value={summary ? `${summary.friendlySourceRate}%` : "—"} icon={<Link2 className="h-4 w-4" />} loading={summaryLoading} color="text-emerald-600" />
+        <KPICard title="事实覆盖率" value={summary ? `${summary.targetFactsCoverage}%` : "—"} icon={<Target className="h-4 w-4" />} loading={summaryLoading} color="text-blue-600" />
+        <KPICard title="引用命中率" value={summary ? `${summary.ourContentRate}%` : "—"} icon={<BarChart3 className="h-4 w-4" />} loading={summaryLoading} color="text-violet-600" />
+        <KPICard title="未读预警" value={summary?.alertCount?.toString() || "0"} icon={<Bell className="h-4 w-4" />} loading={summaryLoading} color="text-orange-600" />
       </div>
 
-      {/* Platform Breakdown */}
+      {/* Platform Breakdown — 8 per row */}
       {summary?.platformBreakdown && summary.platformBreakdown.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">各平台情感均值</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
               {summary.platformBreakdown.map((p) => (
-                <div
-                  key={p.platform}
-                  className="rounded-lg border p-3 text-center space-y-1"
-                >
-                  <p className="text-xs text-muted-foreground">
+                <div key={p.platform} className="rounded-lg border p-2.5 text-center space-y-1">
+                  <p className="text-[11px] text-muted-foreground">
                     {PLATFORM_LABELS[p.platform as Platform] || p.platform}
                   </p>
-                  <p
-                    className="text-2xl font-bold"
-                    style={{ color: getSentimentColor(p.sentimentAvg) }}
-                  >
+                  <p className="text-2xl font-bold" style={{ color: getSentimentColor(p.sentimentAvg) }}>
                     {p.sentimentAvg > 0 ? p.sentimentAvg.toFixed(1) : "—"}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.collectionCount} 条采集
-                  </p>
+                  <p className="text-[10px] text-muted-foreground">{p.collectionCount} 条</p>
                 </div>
               ))}
             </div>
@@ -215,7 +171,48 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Heatmap */}
+      {/* Recent Alerts — paginated */}
+      {alertsList && alertsList.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold">最新预警</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={alertPage === 0} onClick={() => setAlertPage(p => p - 1)}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span>第 {alertPage + 1} 页</span>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={!hasNextAlertPage} onClick={() => setAlertPage(p => p + 1)}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {alertsList.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-3 rounded-lg border p-3">
+                  <div className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{alert.title}</p>
+                      <Badge variant="outline" className="text-[10px] px-1.5" style={{ color: SEVERITY_COLORS[alert.severity], borderColor: SEVERITY_COLORS[alert.severity] }}>
+                        {SEVERITY_LABELS[alert.severity]}
+                      </Badge>
+                    </div>
+                    {alert.description && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{alert.description}</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground shrink-0">{new Date(alert.createdAt).toLocaleDateString("zh-CN")}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Heatmap — collapsible by brand line */}
       {Object.keys(heatmapByBrand).length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -228,98 +225,54 @@ export default function Home() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
+            <div className="space-y-3">
               {Object.entries(heatmapByBrand).map(([brand, items]) => (
-                <div key={brand}>
-                  <p className="text-sm font-medium mb-2 text-muted-foreground">
-                    {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
-                  </p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr>
-                          <th className="text-left p-1.5 font-medium text-muted-foreground min-w-[160px]">问题</th>
-                          {activePlatforms.map((p) => (
-                            <th key={p} className="text-center p-1.5 font-medium text-muted-foreground min-w-[70px]">
-                              {PLATFORM_LABELS[p] || p}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item) => (
-                          <tr key={item.questionId} className="border-t border-border/50">
-                            <td className="p-1.5 text-foreground">{item.text}</td>
-                            {activePlatforms.map((p) => {
-                              const score = item.scores[p];
-                              return (
-                                <td key={p} className="text-center p-1.5">
-                                  {score ? (
-                                    <span
-                                      className="inline-block rounded px-2 py-0.5 font-medium text-white"
-                                      style={{ backgroundColor: getSentimentColor(score) }}
-                                    >
-                                      {score.toFixed(1)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground/40">—</span>
-                                  )}
-                                </td>
-                              );
-                            })}
+                <Collapsible key={brand} defaultOpen={false}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full group rounded-lg hover:bg-muted/50 px-2 py-1.5 transition-colors">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
+                      <span className="ml-1.5 text-xs font-normal">({items.length} 题)</span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="overflow-x-auto mt-1">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr>
+                            <th className="text-left p-1.5 font-medium text-muted-foreground min-w-[160px]">问题</th>
+                            {activePlatforms.map((p) => (
+                              <th key={p} className="text-center p-1.5 font-medium text-muted-foreground min-w-[70px]">
+                                {PLATFORM_LABELS[p] || p}
+                              </th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recent Alerts */}
-      {alertsList && alertsList.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">最新预警</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {alertsList.map((alert) => (
-                <div
-                  key={alert.id}
-                  className="flex items-start gap-3 rounded-lg border p-3"
-                >
-                  <div
-                    className="h-2 w-2 rounded-full mt-1.5 shrink-0"
-                    style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{alert.title}</p>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] px-1.5"
-                        style={{
-                          color: SEVERITY_COLORS[alert.severity],
-                          borderColor: SEVERITY_COLORS[alert.severity],
-                        }}
-                      >
-                        {SEVERITY_LABELS[alert.severity]}
-                      </Badge>
+                        </thead>
+                        <tbody>
+                          {items.map((item) => (
+                            <tr key={item.questionId} className="border-t border-border/50">
+                              <td className="p-1.5 text-foreground">{item.text}</td>
+                              {activePlatforms.map((p) => {
+                                const score = item.scores[p];
+                                return (
+                                  <td key={p} className="text-center p-1.5">
+                                    {score ? (
+                                      <span className="inline-block rounded px-2 py-0.5 font-medium text-white" style={{ backgroundColor: getSentimentColor(score) }}>
+                                        {score.toFixed(1)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground/40">—</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                    {alert.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {alert.description}
-                      </p>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground shrink-0">
-                    {new Date(alert.createdAt).toLocaleDateString("zh-CN")}
-                  </p>
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               ))}
             </div>
           </CardContent>
@@ -342,19 +295,7 @@ export default function Home() {
   );
 }
 
-function KPICard({
-  title,
-  value,
-  icon,
-  loading,
-  color,
-}: {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  loading: boolean;
-  color: string;
-}) {
+function KPICard({ title, value, icon, loading, color }: { title: string; value: string; icon: React.ReactNode; loading: boolean; color: string }) {
   return (
     <Card>
       <CardContent className="p-4">
