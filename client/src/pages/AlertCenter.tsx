@@ -12,11 +12,12 @@ export default function AlertCenter() {
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [readFilter, setReadFilter] = useState<string>("unread");
 
-  const { data: alertsList, isLoading } = trpc.alerts.list.useQuery({
+  const { data: alertsResult, isLoading } = trpc.alerts.list.useQuery({
     severity: severityFilter === "all" ? undefined : severityFilter,
     isRead: readFilter === "all" ? undefined : readFilter === "read",
     limit: 100,
   });
+  const alertsList = alertsResult?.data;
 
   const utils = trpc.useUtils();
 
@@ -25,7 +26,7 @@ export default function AlertCenter() {
       await utils.alerts.list.cancel();
       const prev = utils.alerts.list.getData();
       utils.alerts.list.setData(undefined, (old: any) =>
-        old?.map((a: any) => (a.id === id ? { ...a, isRead: true } : a))
+        old ? { ...old, data: old.data?.map((a: any) => (a.id === id ? { ...a, isRead: true } : a)) } : old
       );
       return { prev };
     },

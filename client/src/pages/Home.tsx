@@ -56,16 +56,13 @@ export default function Home() {
 
   const { data: summary, isLoading: summaryLoading } = trpc.dashboard.summary.useQuery(range, { staleTime: 30000 });
   const { data: heatmapData } = trpc.dashboard.heatmap.useQuery(range, { staleTime: 30000 });
-  const { data: alertsList } = trpc.alerts.list.useQuery(
+  const { data: alertsResult } = trpc.alerts.list.useQuery(
     { limit: ALERTS_PAGE_SIZE, offset: alertPage * ALERTS_PAGE_SIZE },
     { staleTime: 10000, placeholderData: keepPreviousData }
   );
-  // Fetch one extra to check if there's a next page
-  const { data: alertsNext } = trpc.alerts.list.useQuery(
-    { limit: 1, offset: (alertPage + 1) * ALERTS_PAGE_SIZE },
-    { staleTime: 10000, placeholderData: keepPreviousData }
-  );
-  const hasNextAlertPage = (alertsNext?.length || 0) > 0;
+  const alertsList = alertsResult?.data;
+  const alertsTotal = alertsResult?.total || 0;
+  const alertsTotalPages = Math.ceil(alertsTotal / ALERTS_PAGE_SIZE);
   const { data: questionsList } = trpc.questions.list.useQuery({}, { staleTime: 60000 });
 
   // Collect platforms that actually have data
@@ -203,8 +200,8 @@ export default function Home() {
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={alertPage === 0} onClick={() => setAlertPage(p => p - 1)}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <span>第 {alertPage + 1} 页</span>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={!hasNextAlertPage} onClick={() => setAlertPage(p => p + 1)}>
+                <span>第 {alertPage + 1} / {alertsTotalPages || 1} 页</span>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={alertPage >= alertsTotalPages - 1} onClick={() => setAlertPage(p => p + 1)}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>

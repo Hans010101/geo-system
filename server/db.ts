@@ -605,18 +605,18 @@ export async function deleteTargetFact(id: number) {
 // ==================== Alerts Helpers ====================
 export async function listAlerts(filters?: { severity?: string; isRead?: boolean; limit?: number; offset?: number }) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) return { data: [], total: 0 };
   const conditions = [];
   if (filters?.severity) conditions.push(eq(alerts.severity, filters.severity as any));
   if (filters?.isRead !== undefined) conditions.push(eq(alerts.isRead, filters.isRead));
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-  return db
-    .select()
-    .from(alerts)
-    .where(whereClause)
-    .orderBy(desc(alerts.createdAt))
-    .limit(filters?.limit || 100)
-    .offset(filters?.offset || 0);
+
+  const [data, totalResult] = await Promise.all([
+    db.select().from(alerts).where(whereClause).orderBy(desc(alerts.createdAt)).limit(filters?.limit || 100).offset(filters?.offset || 0),
+    db.select({ count: count() }).from(alerts).where(whereClause),
+  ]);
+
+  return { data, total: totalResult[0]?.count || 0 };
 }
 
 export async function createAlert(data: InsertAlert) {

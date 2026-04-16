@@ -1383,7 +1383,7 @@ const weeklyReportsRouter = router({
         platformBreakdown: summary?.platformBreakdown || [],
         questionDetails: heatmap,
         citationAnalysis: { topCited },
-        alertsSummary: alertsList.slice(0, 10),
+        alertsSummary: alertsList.data.slice(0, 10),
         generatedAt: Date.now(),
       });
 
