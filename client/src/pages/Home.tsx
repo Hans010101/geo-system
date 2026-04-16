@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
@@ -43,6 +44,9 @@ function getTimeRange(range: TimeRange) {
 
 const ALERTS_PAGE_SIZE = 5;
 
+const DOMESTIC_PLATFORMS = ["deepseek", "tongyi", "zhipu", "kimi", "doubao", "minimax", "wenxin", "hunyuan"];
+const INTERNATIONAL_PLATFORMS = ["chatgpt", "claude", "copilot", "perplexity", "grok", "gemini", "llama"];
+
 export default function Home() {
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [alertPage, setAlertPage] = useState(0);
@@ -52,12 +56,12 @@ export default function Home() {
   const { data: heatmapData } = trpc.dashboard.heatmap.useQuery(range, { staleTime: 30000 });
   const { data: alertsList } = trpc.alerts.list.useQuery(
     { limit: ALERTS_PAGE_SIZE, offset: alertPage * ALERTS_PAGE_SIZE },
-    { staleTime: 10000 }
+    { staleTime: 10000, placeholderData: keepPreviousData }
   );
   // Fetch one extra to check if there's a next page
   const { data: alertsNext } = trpc.alerts.list.useQuery(
     { limit: 1, offset: (alertPage + 1) * ALERTS_PAGE_SIZE },
-    { staleTime: 10000 }
+    { staleTime: 10000, placeholderData: keepPreviousData }
   );
   const hasNextAlertPage = (alertsNext?.length || 0) > 0;
   const { data: questionsList } = trpc.questions.list.useQuery({}, { staleTime: 60000 });
@@ -147,29 +151,45 @@ export default function Home() {
         <KPICard title="未读预警" value={summary?.alertCount?.toString() || "0"} icon={<Bell className="h-4 w-4" />} loading={summaryLoading} color="text-orange-600" />
       </div>
 
-      {/* Platform Breakdown — 8 per row */}
-      {summary?.platformBreakdown && summary.platformBreakdown.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">各平台情感均值</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
-              {summary.platformBreakdown.map((p) => (
-                <div key={p.platform} className="rounded-lg border p-2.5 text-center space-y-1">
-                  <p className="text-[11px] text-muted-foreground">
-                    {PLATFORM_LABELS[p.platform as Platform] || p.platform}
+      {/* Platform Breakdown — domestic / international split */}
+      {summary?.platformBreakdown && summary.platformBreakdown.length > 0 && (() => {
+        const breakdownMap = new Map(summary.platformBreakdown.map(p => [p.platform, p]));
+        const renderRow = (platforms: string[]) => (
+          <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+            {platforms.map((platform) => {
+              const p = breakdownMap.get(platform);
+              return (
+                <div key={platform} className="rounded-lg border p-2.5 text-center space-y-1">
+                  <p className="text-[11px] font-semibold text-foreground">
+                    {PLATFORM_LABELS[platform as Platform] || platform}
                   </p>
-                  <p className="text-2xl font-bold" style={{ color: getSentimentColor(p.sentimentAvg) }}>
-                    {p.sentimentAvg > 0 ? p.sentimentAvg.toFixed(1) : "—"}
+                  <p className="text-2xl font-bold" style={{ color: p && p.sentimentAvg > 0 ? getSentimentColor(p.sentimentAvg) : "#d1d5db" }}>
+                    {p && p.sentimentAvg > 0 ? p.sentimentAvg.toFixed(1) : "—"}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">{p.collectionCount} 条</p>
+                  <p className="text-[10px] text-muted-foreground">{p?.collectionCount || 0} 条</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              );
+            })}
+          </div>
+        );
+        return (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">各平台情感均值</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">国内平台</p>
+                {renderRow(DOMESTIC_PLATFORMS)}
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">国际平台</p>
+                {renderRow(INTERNATIONAL_PLATFORMS)}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Recent Alerts — paginated */}
       {alertsList && alertsList.length > 0 && (
