@@ -132,10 +132,23 @@ export default function ConfigCollection() {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("chatgpt");
   const [selectedPlatformAll, setSelectedPlatformAll] = useState<string>("");
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState("trigger");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
   const [page, setPage] = useState(0);
+
+  // Auto-open detail from URL param (e.g. /config/collection?detail=123)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const detailParam = params.get("detail");
+    if (detailParam) {
+      setDetailId(Number(detailParam));
+      setActiveTab("history");
+      // Clean up URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Three independent polling channels
   const singleQ = useBatchPoller();
@@ -362,7 +375,7 @@ export default function ConfigCollection() {
         </div>
       )}
 
-      <Tabs defaultValue="trigger" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="trigger">触发采集</TabsTrigger>
           <TabsTrigger value="history">

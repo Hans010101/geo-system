@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
@@ -48,6 +49,7 @@ const DOMESTIC_PLATFORMS = ["deepseek", "tongyi", "zhipu", "kimi", "doubao", "mi
 const INTERNATIONAL_PLATFORMS = ["chatgpt", "claude", "copilot", "perplexity", "grok", "gemini", "llama"];
 
 export default function Home() {
+  const [, navigate] = useLocation();
   const [timeRange, setTimeRange] = useState<TimeRange>("month");
   const [alertPage, setAlertPage] = useState(0);
   const range = useMemo(() => getTimeRange(timeRange), [timeRange]);
@@ -210,23 +212,30 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {alertsList.map((alert) => (
-                <div key={alert.id} className="flex items-start gap-3 rounded-lg border p-3">
-                  <div className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{alert.title}</p>
-                      <Badge variant="outline" className="text-[10px] px-1.5" style={{ color: SEVERITY_COLORS[alert.severity], borderColor: SEVERITY_COLORS[alert.severity] }}>
-                        {SEVERITY_LABELS[alert.severity]}
-                      </Badge>
+              {alertsList.map((alert) => {
+                const clickable = !!alert.relatedCollectionId;
+                return (
+                  <div
+                    key={alert.id}
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${clickable ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                    onClick={clickable ? () => navigate(`/config/collection?detail=${alert.relatedCollectionId}`) : undefined}
+                  >
+                    <div className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: SEVERITY_COLORS[alert.severity] || "#6b7280" }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{alert.title}</p>
+                        <Badge variant="outline" className="text-[10px] px-1.5" style={{ color: SEVERITY_COLORS[alert.severity], borderColor: SEVERITY_COLORS[alert.severity] }}>
+                          {SEVERITY_LABELS[alert.severity]}
+                        </Badge>
+                      </div>
+                      {alert.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{alert.description}</p>
+                      )}
                     </div>
-                    {alert.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{alert.description}</p>
-                    )}
+                    <p className="text-xs text-muted-foreground shrink-0">{new Date(alert.createdAt).toLocaleDateString("zh-CN")}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground shrink-0">{new Date(alert.createdAt).toLocaleDateString("zh-CN")}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
