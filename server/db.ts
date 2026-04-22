@@ -152,6 +152,7 @@ export async function listQuestions(filters?: {
   dimension?: string;
   language?: string;
   status?: string;
+  includeArchived?: boolean;
 }) {
   const db = await getDb();
   if (!db) return [];
@@ -159,7 +160,12 @@ export async function listQuestions(filters?: {
   if (filters?.brandLine) conditions.push(eq(questions.brandLine, filters.brandLine as any));
   if (filters?.dimension) conditions.push(eq(questions.dimension, filters.dimension as any));
   if (filters?.language) conditions.push(eq(questions.language, filters.language as any));
-  if (filters?.status) conditions.push(eq(questions.status, filters.status as any));
+  if (filters?.status) {
+    conditions.push(eq(questions.status, filters.status as any));
+  } else if (!filters?.includeArchived) {
+    // By default, exclude archived questions
+    conditions.push(sql`${questions.status} != 'archived'`);
+  }
   if (conditions.length > 0) {
     return db.select().from(questions).where(and(...conditions)).orderBy(asc(questions.questionId));
   }

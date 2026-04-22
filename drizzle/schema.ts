@@ -46,7 +46,7 @@ export const questions = mysqlTable("questions", {
     "industry_status",
   ]).notNull(),
   language: mysqlEnum("language", ["zh-CN", "en-US"]).notNull(),
-  status: mysqlEnum("status", ["active", "paused", "dynamic"]).default("active").notNull(),
+  status: mysqlEnum("status", ["active", "paused", "dynamic", "archived"]).default("active").notNull(),
   validFrom: timestamp("validFrom"),
   validUntil: timestamp("validUntil"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
