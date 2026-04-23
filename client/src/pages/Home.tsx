@@ -271,11 +271,11 @@ export default function Home() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
+          <CardContent className="p-0 overflow-auto max-h-[calc(100vh-240px)]">
+            <div className="space-y-3 pb-4">
               {Object.entries(heatmapByBrand).map(([brand, items]) => (
                 <Collapsible key={brand} defaultOpen={false}>
-                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-2 py-1.5 transition-colors">
+                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-4 py-2 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">
                       {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
                       <span className="ml-1.5 text-xs font-normal">({items.length} 题)</span>
@@ -283,52 +283,50 @@ export default function Home() {
                     <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="relative overflow-x-auto overflow-y-clip mt-1">
-                      <table className="text-xs border-separate border-spacing-0 min-w-max w-full">
-                        <thead>
-                          <tr>
-                            <th className="sticky top-8 left-0 z-30 bg-card text-left p-1.5 font-medium text-muted-foreground min-w-[160px] w-[160px] border-b border-r border-border/50">问题</th>
-                            {activePlatforms.map((p) => (
-                              <th key={p} className="sticky top-8 z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
-                                {PLATFORM_LABELS[p] || p}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((item) => (
-                            <tr key={item.questionId}>
-                              <td
-                                className="sticky left-0 z-10 bg-card p-1.5 text-foreground cursor-pointer hover:text-primary transition-colors border-t border-r border-border/50 min-w-[160px] w-[160px]"
-                                onClick={() => window.open(`/questions/${item.questionId}`, '_blank')}
-                                title="在新标签页查看问题详情"
-                              >
-                                {item.text}
-                              </td>
-                              {activePlatforms.map((p) => {
-                                const score = item.scores[p];
-                                return (
-                                  <td key={p} className="text-center p-1.5 border-t border-border/50 min-w-[70px]">
-                                    {score ? (
-                                      <span
-                                        className="inline-block rounded px-2 py-0.5 font-medium text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
-                                        style={{ backgroundColor: getSentimentColor(score) }}
-                                        onClick={() => handleScoreClick(item.questionId, p)}
-                                        title="查看采集详情"
-                                      >
-                                        {score.toFixed(1)}
-                                      </span>
-                                    ) : (
-                                      <span className="text-muted-foreground/40">—</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
+                    <table className="text-xs border-separate border-spacing-0 min-w-max w-full mt-1">
+                      <thead>
+                        <tr>
+                          <th className="sticky top-[37px] left-0 z-30 bg-card text-left py-1.5 pl-4 pr-1.5 font-medium text-muted-foreground min-w-[160px] w-[160px] border-b border-r border-border/50">问题</th>
+                          {activePlatforms.map((p) => (
+                            <th key={p} className="sticky top-[37px] z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
+                              {PLATFORM_LABELS[p] || p}
+                            </th>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr key={item.questionId}>
+                            <td
+                              className="sticky left-0 z-10 bg-card py-1.5 pl-4 pr-1.5 text-foreground cursor-pointer hover:text-primary transition-colors border-t border-r border-border/50 min-w-[160px] w-[160px]"
+                              onClick={() => window.open(`/questions/${item.questionId}`, '_blank')}
+                              title="在新标签页查看问题详情"
+                            >
+                              {item.text}
+                            </td>
+                            {activePlatforms.map((p) => {
+                              const score = item.scores[p];
+                              return (
+                                <td key={p} className="text-center p-1.5 border-t border-border/50 min-w-[70px]">
+                                  {score ? (
+                                    <span
+                                      className="inline-block rounded px-2 py-0.5 font-medium text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+                                      style={{ backgroundColor: getSentimentColor(score) }}
+                                      onClick={() => handleScoreClick(item.questionId, p)}
+                                      title="查看采集详情"
+                                    >
+                                      {score.toFixed(1)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/40">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </CollapsibleContent>
                 </Collapsible>
               ))}
