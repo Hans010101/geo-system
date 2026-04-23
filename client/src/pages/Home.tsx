@@ -259,9 +259,14 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Heatmap — collapsible by brand line */}
+      {/* Heatmap — standard sticky table pattern:
+          - window is the only vertical scroll source (no max-h/overflow on Card)
+          - per-group <div overflow-x-auto> handles horizontal scroll independently
+          - trigger is OUTSIDE the horizontal wrapper → sticky scopes to window (stays on top while scrolling page)
+          - thead/first-col are INSIDE the horizontal wrapper → sticky scopes to wrapper (CSS spec: any overflow!=visible creates scroll container for both axes)
+            this is the standard constraint of per-group horizontal scroll; thead stays pinned to top of its group and moves with it */}
       {Object.keys(heatmapByBrand).length > 0 && (
-        <Card className="overflow-visible">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-base font-semibold">平台 × 问题 情感热力图</CardTitle>
             <Button variant="outline" size="sm" onClick={handleExportHeatmap}>
@@ -269,24 +274,26 @@ export default function Home() {
               导出 CSV
             </Button>
           </CardHeader>
-          <CardContent className="p-0 overflow-auto max-h-[calc(100vh-240px)]">
-            <div className="pb-4">
-              {Object.entries(heatmapByBrand).map(([brand, items]) => (
-                <Collapsible key={brand} defaultOpen={false}>
-                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-4 h-10 transition-colors">
-                    <span className="text-sm font-medium text-muted-foreground inline-flex items-center gap-1.5">
-                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-                      {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
-                      <span className="ml-1 text-xs font-normal">({items.length} 题)</span>
-                    </span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
+          <CardContent className="px-0">
+            {Object.entries(heatmapByBrand).map(([brand, items]) => (
+              <Collapsible key={brand} defaultOpen={false}>
+                {/* trigger: h-12 fixed so we can align thead under it if wanted; sticky to window */}
+                <CollapsibleTrigger className="sticky top-0 z-30 flex items-center w-full group bg-card hover:bg-muted/50 border-y border-border/50 px-4 h-12 transition-colors">
+                  <span className="text-sm font-medium text-foreground inline-flex items-center gap-1.5">
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                    {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">({items.length} 题)</span>
+                  </span>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="overflow-x-auto">
                     <table className="text-xs border-separate border-spacing-0 min-w-max w-full">
                       <thead>
                         <tr>
-                          <th className="sticky top-10 left-0 z-30 bg-card text-left py-1.5 pl-4 pr-1.5 font-medium text-muted-foreground min-w-[160px] w-[160px] border-b border-r border-border/50">问题</th>
+                          {/* first col header: sticky left (wrapper scope) + top (wrapper scope). min-w-[180px] so Chinese question prefix is readable. */}
+                          <th className="sticky top-0 left-0 z-30 bg-card text-left py-2 pl-4 pr-2 font-medium text-muted-foreground min-w-[180px] w-[180px] border-b border-r border-border/50">问题</th>
                           {activePlatforms.map((p) => (
-                            <th key={p} className="sticky top-10 z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
+                            <th key={p} className="sticky top-0 z-20 bg-card text-center p-2 font-medium text-muted-foreground min-w-[80px] border-b border-border/50">
                               {PLATFORM_LABELS[p] || p}
                             </th>
                           ))}
@@ -296,7 +303,7 @@ export default function Home() {
                         {items.map((item) => (
                           <tr key={item.questionId}>
                             <td
-                              className="sticky left-0 z-10 bg-card py-1.5 pl-4 pr-1.5 text-foreground cursor-pointer hover:text-primary transition-colors border-t border-r border-border/50 min-w-[160px] w-[160px]"
+                              className="sticky left-0 z-10 bg-card py-1.5 pl-4 pr-2 text-foreground cursor-pointer hover:text-primary transition-colors border-b border-r border-border/50 min-w-[180px] w-[180px]"
                               onClick={() => window.open(`/questions/${item.questionId}`, '_blank')}
                               title="在新标签页查看问题详情"
                             >
@@ -305,7 +312,7 @@ export default function Home() {
                             {activePlatforms.map((p) => {
                               const score = item.scores[p];
                               return (
-                                <td key={p} className="text-center p-1.5 border-t border-border/50 min-w-[70px]">
+                                <td key={p} className="text-center p-1.5 border-b border-border/50 min-w-[80px]">
                                   {score ? (
                                     <span
                                       className="inline-block rounded px-2 py-0.5 font-medium text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
@@ -325,10 +332,10 @@ export default function Home() {
                         ))}
                       </tbody>
                     </table>
-                  </CollapsibleContent>
-                </Collapsible>
-              ))}
-            </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ))}
           </CardContent>
         </Card>
       )}
