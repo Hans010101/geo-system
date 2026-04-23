@@ -275,7 +275,7 @@ export default function Home() {
             <div className="space-y-3">
               {Object.entries(heatmapByBrand).map(([brand, items]) => (
                 <Collapsible key={brand} defaultOpen={false}>
-                  <CollapsibleTrigger className="flex items-center justify-between w-full group rounded-lg hover:bg-muted/50 px-2 py-1.5 transition-colors">
+                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-2 py-1.5 transition-colors">
                     <span className="text-sm font-medium text-muted-foreground">
                       {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
                       <span className="ml-1.5 text-xs font-normal">({items.length} 题)</span>
@@ -283,13 +283,13 @@ export default function Home() {
                     <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="overflow-x-auto mt-1">
-                      <table className="w-full text-xs">
+                    <div className="mt-1">
+                      <table className="w-full text-xs border-separate border-spacing-0">
                         <thead>
                           <tr>
-                            <th className="text-left p-1.5 font-medium text-muted-foreground min-w-[160px]">问题</th>
+                            <th className="sticky top-8 left-0 z-30 bg-card text-left p-1.5 font-medium text-muted-foreground min-w-[160px] border-b border-border/50">问题</th>
                             {activePlatforms.map((p) => (
-                              <th key={p} className="text-center p-1.5 font-medium text-muted-foreground min-w-[70px]">
+                              <th key={p} className="sticky top-8 z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
                                 {PLATFORM_LABELS[p] || p}
                               </th>
                             ))}
@@ -297,9 +297,9 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {items.map((item) => (
-                            <tr key={item.questionId} className="border-t border-border/50">
+                            <tr key={item.questionId}>
                               <td
-                                className="p-1.5 text-foreground cursor-pointer hover:text-primary transition-colors"
+                                className="sticky left-0 z-10 bg-card p-1.5 text-foreground cursor-pointer hover:text-primary transition-colors border-t border-border/50"
                                 onClick={() => window.open(`/questions/${item.questionId}`, '_blank')}
                                 title="在新标签页查看问题详情"
                               >
@@ -308,7 +308,7 @@ export default function Home() {
                               {activePlatforms.map((p) => {
                                 const score = item.scores[p];
                                 return (
-                                  <td key={p} className="text-center p-1.5">
+                                  <td key={p} className="text-center p-1.5 border-t border-border/50">
                                     {score ? (
                                       <span
                                         className="inline-block rounded px-2 py-0.5 font-medium text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
