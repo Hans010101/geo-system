@@ -395,7 +395,7 @@ export default function ConfigCollection() {
                     <SelectContent>
                       {questionsList?.map((q) => (
                         <SelectItem key={q.questionId} value={q.questionId}>
-                          [{q.questionId}] {q.text.slice(0, 40)}...
+                          {q.text}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -449,7 +449,7 @@ export default function ConfigCollection() {
                     <SelectContent>
                       {questionsList?.map((q) => (
                         <SelectItem key={q.questionId} value={q.questionId}>
-                          [{q.questionId}] {q.text.slice(0, 40)}...
+                          {q.text}
                         </SelectItem>
                       ))}
                     </SelectContent>

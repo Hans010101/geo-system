@@ -129,7 +129,6 @@ export default function QuestionDetail() {
           <SelectContent>
             {filteredQuestions.map((q) => (
               <SelectItem key={q.questionId} value={q.questionId}>
-                <span className="text-muted-foreground mr-2">[{q.questionId}]</span>
                 {q.text}
               </SelectItem>
             ))}
