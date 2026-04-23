@@ -261,34 +261,32 @@ export default function Home() {
 
       {/* Heatmap — collapsible by brand line */}
       {Object.keys(heatmapByBrand).length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold">平台 × 问题 情感热力图</CardTitle>
-              <Button variant="outline" size="sm" onClick={handleExportHeatmap}>
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                导出 CSV
-              </Button>
-            </div>
+        <Card className="overflow-visible">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base font-semibold">平台 × 问题 情感热力图</CardTitle>
+            <Button variant="outline" size="sm" onClick={handleExportHeatmap}>
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              导出 CSV
+            </Button>
           </CardHeader>
           <CardContent className="p-0 overflow-auto max-h-[calc(100vh-240px)]">
-            <div className="space-y-3 pb-4">
+            <div className="pb-4">
               {Object.entries(heatmapByBrand).map(([brand, items]) => (
                 <Collapsible key={brand} defaultOpen={false}>
-                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-4 py-2 transition-colors">
-                    <span className="text-sm font-medium text-muted-foreground">
+                  <CollapsibleTrigger className="sticky top-0 z-40 flex items-center justify-between w-full group bg-card hover:bg-muted/50 border-b border-border/50 px-4 h-10 transition-colors">
+                    <span className="text-sm font-medium text-muted-foreground inline-flex items-center gap-1.5">
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                       {BRAND_LINE_LABELS[brand as keyof typeof BRAND_LINE_LABELS] || brand}
-                      <span className="ml-1.5 text-xs font-normal">({items.length} 题)</span>
+                      <span className="ml-1 text-xs font-normal">({items.length} 题)</span>
                     </span>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <table className="text-xs border-separate border-spacing-0 min-w-max w-full mt-1">
+                    <table className="text-xs border-separate border-spacing-0 min-w-max w-full">
                       <thead>
                         <tr>
-                          <th className="sticky top-[37px] left-0 z-30 bg-card text-left py-1.5 pl-4 pr-1.5 font-medium text-muted-foreground min-w-[160px] w-[160px] border-b border-r border-border/50">问题</th>
+                          <th className="sticky top-10 left-0 z-30 bg-card text-left py-1.5 pl-4 pr-1.5 font-medium text-muted-foreground min-w-[160px] w-[160px] border-b border-r border-border/50">问题</th>
                           {activePlatforms.map((p) => (
-                            <th key={p} className="sticky top-[37px] z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
+                            <th key={p} className="sticky top-10 z-20 bg-card text-center p-1.5 font-medium text-muted-foreground min-w-[70px] border-b border-border/50">
                               {PLATFORM_LABELS[p] || p}
                             </th>
                           ))}
