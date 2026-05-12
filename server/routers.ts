@@ -6,7 +6,7 @@ import { z } from "zod";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
 import { nanoid } from "nanoid";
-import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform } from "@shared/geo-types";
+import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_BAI_MODELS, BAI_SUPPORTED_PLATFORMS, BAI_BASE_URL, OPENROUTER_BASE_URL, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform, type LLMProvider } from "@shared/geo-types";
 import { ENV } from "./_core/env";
 import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
@@ -51,6 +51,9 @@ function isCancelled(id: number): boolean {
 function resolveModelForBaseUrl(platform: string, baseUrl: string, platformModelOverride?: string | null): string {
   if (platformModelOverride) return platformModelOverride;
   const p = platform as Platform;
+  if (baseUrl.includes("b.ai")) {
+    return PLATFORM_BAI_MODELS[p] || PLATFORM_OPENROUTER_MODELS[p] || "gpt-5.2";
+  }
   if (baseUrl.includes("dashscope.aliyuncs.com") || baseUrl.includes("bailian")) {
     return PLATFORM_BAILIAN_MODELS[p] || PLATFORM_OPENROUTER_MODELS[p] || "qwen-plus";
   }
@@ -59,6 +62,89 @@ function resolveModelForBaseUrl(platform: string, baseUrl: string, platformModel
   }
   // Unknown provider — try OpenRouter format as default
   return PLATFORM_OPENROUTER_MODELS[p] || "openai/gpt-4o";
+}
+
+// ==================== Provider Routing (BAI ⇄ OpenRouter) ====================
+// Identify a globalApiKey record's provider purely by its baseUrl. No schema change needed.
+function detectProvider(baseUrl: string | null | undefined): LLMProvider | "other" {
+  if (!baseUrl) return "other";
+  if (baseUrl.includes("b.ai")) return "bai";
+  if (baseUrl.includes("openrouter.ai")) return "openrouter";
+  return "other";
+}
+
+// Resolve the active globalApiKey for a given provider, or null if none configured.
+async function getActiveKeyForProvider(provider: LLMProvider): Promise<{ apiKey: string; baseUrl: string } | null> {
+  const keys = await db.listGlobalApiKeys();
+  for (const k of keys) {
+    if (!k.isActive || !k.apiKey || !k.baseUrl) continue;
+    if (detectProvider(k.baseUrl) === provider) {
+      return { apiKey: k.apiKey, baseUrl: k.baseUrl };
+    }
+  }
+  return null;
+}
+
+// Read the configured primary provider (sysConfig key=llm_primary_provider), defaulting to 'bai'.
+async function getPrimaryProvider(): Promise<LLMProvider> {
+  const v = await db.getSysConfig("llm_primary_provider");
+  return v === "openrouter" ? "openrouter" : "bai";
+}
+
+// Core routing decision for a platform's collection call.
+// Returns { provider, apiKey, baseUrl, model, reason }.
+// Rules:
+//   1. BAI-uncovered platform → always OpenRouter (regardless of switch).
+//   2. BAI-covered platform → primary provider if it has an active key; otherwise fall back to the other provider.
+//   3. If neither provider has a key → caller decides (falls through to platform key / env in resolveApiConfig).
+async function resolveProviderForPlatform(platform: string): Promise<{
+  provider: LLMProvider | null;
+  apiKey: string | null;
+  baseUrl: string | null;
+  model: string;
+  reason: string;
+}> {
+  const p = platform as Platform;
+
+  // Rule 1: BAI doesn't cover this platform → always OpenRouter
+  if (!BAI_SUPPORTED_PLATFORMS.includes(p)) {
+    const orKey = await getActiveKeyForProvider("openrouter");
+    if (orKey) {
+      return {
+        provider: "openrouter",
+        apiKey: orKey.apiKey,
+        baseUrl: orKey.baseUrl,
+        model: resolveModelForBaseUrl(platform, orKey.baseUrl),
+        reason: "platform-not-covered-by-bai",
+      };
+    }
+    return { provider: null, apiKey: null, baseUrl: null, model: PLATFORM_OPENROUTER_MODELS[p] || "openai/gpt-4o", reason: "openrouter-key-missing" };
+  }
+
+  // Rule 2 / 3: primary, then fallback
+  const primary = await getPrimaryProvider();
+  const primaryKey = await getActiveKeyForProvider(primary);
+  if (primaryKey) {
+    return {
+      provider: primary,
+      apiKey: primaryKey.apiKey,
+      baseUrl: primaryKey.baseUrl,
+      model: resolveModelForBaseUrl(platform, primaryKey.baseUrl),
+      reason: "primary",
+    };
+  }
+  const fallback: LLMProvider = primary === "bai" ? "openrouter" : "bai";
+  const fallbackKey = await getActiveKeyForProvider(fallback);
+  if (fallbackKey) {
+    return {
+      provider: fallback,
+      apiKey: fallbackKey.apiKey,
+      baseUrl: fallbackKey.baseUrl,
+      model: resolveModelForBaseUrl(platform, fallbackKey.baseUrl),
+      reason: `fallback-from-${primary}-missing-key`,
+    };
+  }
+  return { provider: null, apiKey: null, baseUrl: null, model: "openai/gpt-4o", reason: "no-provider-key-available" };
 }
 
 // ==================== Global API Key Resolution ====================
@@ -83,25 +169,34 @@ async function resolveApiConfig(platform: string): Promise<{
     };
   }
 
-  // 2. Global API keys - find one that covers this platform
+  // 2. Provider router: BAI (primary) ⇄ OpenRouter (hot standby)
+  //    See resolveProviderForPlatform: BAI-uncovered platforms always go through OpenRouter;
+  //    BAI-covered platforms use the configured primary, falling back to the other if the
+  //    primary has no active key.
+  const routed = await resolveProviderForPlatform(platform);
+  if (routed.apiKey && routed.baseUrl) {
+    log.info(`resolveApiConfig: ${platform} routed to provider=${routed.provider} (${routed.reason}), model=${routed.model}, baseUrl=${routed.baseUrl}`);
+    return {
+      apiKey: routed.apiKey,
+      baseUrl: routed.baseUrl,
+      model: routed.model,
+      source: "global",
+    };
+  }
+
+  // 2b. Legacy fallback: any globalApiKey that explicitly lists this platform in coveredPlatforms
+  // (e.g. 阿里百炼 still covers Chinese platforms). Keeps existing 百炼 config working.
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
-    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) {
-      log.info(`Skipping global key "${gk.name}": active=${gk.isActive}, hasKey=${!!gk.apiKey}, hasUrl=${!!gk.baseUrl}`);
-      continue;
-    }
+    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) continue;
+    // Skip BAI / OpenRouter records here — already handled above.
+    const prov = detectProvider(gk.baseUrl);
+    if (prov === "bai" || prov === "openrouter") continue;
     const covered = (gk.coveredPlatforms as string[]) || [];
     if (covered.includes(platform)) {
-      // When using a global key, resolve model based on the KEY's baseUrl, not platformConfig
-      // platformConfig.modelVersion is only for platform's own API key
       const model = resolveModelForBaseUrl(platform, gk.baseUrl);
-      log.info(`resolveApiConfig: ${platform} matched global key "${gk.name}", model=${model}, baseUrl=${gk.baseUrl}`);
-      return {
-        apiKey: gk.apiKey,
-        baseUrl: gk.baseUrl,
-        model,
-        source: "global",
-      };
+      log.info(`resolveApiConfig: ${platform} matched legacy global key "${gk.name}", model=${model}, baseUrl=${gk.baseUrl}`);
+      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model, source: "global" };
     }
   }
 
@@ -124,21 +219,28 @@ async function resolveApiConfig(platform: string): Promise<{
 // Get any active API key (for analysis/citation extraction)
 // Also resolves a suitable model based on the provider
 function resolveAnalysisModel(baseUrl: string): string {
+  if (baseUrl.includes("b.ai")) return "gemini-3-flash";
   if (baseUrl.includes("dashscope") || baseUrl.includes("aliyun")) return "qwen-turbo";
   if (baseUrl.includes("openrouter")) return "google/gemini-2.0-flash-001";
   return "google/gemini-2.0-flash-001";
 }
 
+// For analysis/citation extraction we also respect the primary-provider switch.
+// Order: primary provider (BAI or OpenRouter) → fallback provider → other legacy keys → env.
 async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; model: string } | null> {
+  const primary = await getPrimaryProvider();
+  const primaryKey = await getActiveKeyForProvider(primary);
+  if (primaryKey) {
+    return { apiKey: primaryKey.apiKey, baseUrl: primaryKey.baseUrl, model: resolveAnalysisModel(primaryKey.baseUrl) };
+  }
+  const fallback: LLMProvider = primary === "bai" ? "openrouter" : "bai";
+  const fallbackKey = await getActiveKeyForProvider(fallback);
+  if (fallbackKey) {
+    return { apiKey: fallbackKey.apiKey, baseUrl: fallbackKey.baseUrl, model: resolveAnalysisModel(fallbackKey.baseUrl) };
+  }
+  // Legacy: try any other active global key (e.g. 阿里百炼)
   const globalKeys = await db.listGlobalApiKeys();
-  // Prefer OpenRouter for analysis (百炼 free tier exhausts quickly)
-  // Sort: openrouter first, then others
-  const sorted = [...globalKeys].sort((a, b) => {
-    const aIsOR = a.baseUrl?.includes("openrouter") ? 0 : 1;
-    const bIsOR = b.baseUrl?.includes("openrouter") ? 0 : 1;
-    return aIsOR - bIsOR;
-  });
-  for (const gk of sorted) {
+  for (const gk of globalKeys) {
     if (gk.isActive && gk.apiKey && gk.baseUrl) {
       return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
     }
@@ -175,14 +277,19 @@ async function callExternalLLM(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+      // OpenRouter likes HTTP-Referer + X-Title for attribution; BAI / 百炼 don't.
+      const isOpenRouter = config.baseUrl.includes("openrouter.ai");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${config.apiKey}`,
+      };
+      if (isOpenRouter) {
+        headers["HTTP-Referer"] = "https://geo-system.app";
+        headers["X-Title"] = "GEO System";
+      }
       const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${config.apiKey}`,
-          "HTTP-Referer": "https://geo-system.app",
-          "X-Title": "GEO System",
-        },
+        headers,
         body: JSON.stringify({
           model: config.model,
           messages,
@@ -1350,10 +1457,14 @@ const platformConfigsRouter = router({
 const globalApiKeysRouter = router({
   list: protectedProcedure.query(async () => {
     const keys = await db.listGlobalApiKeys();
-    // Return masked API keys — exclude raw apiKey field
+    // Return masked API keys + detected provider — exclude raw apiKey field
     return keys.map((k) => {
       const { apiKey: rawKey, ...rest } = k;
-      return { ...rest, apiKeyMasked: maskApiKey(rawKey) };
+      return {
+        ...rest,
+        apiKeyMasked: maskApiKey(rawKey),
+        provider: detectProvider(k.baseUrl), // 'bai' | 'openrouter' | 'other'
+      };
     });
   }),
 
@@ -1388,6 +1499,81 @@ const globalApiKeysRouter = router({
     .mutation(async ({ input }) => {
       await db.deleteGlobalApiKey(input.id);
       return { success: true };
+    }),
+
+  // Test a provider connection by calling GET /v1/models.
+  // Accepts either an existing key id (uses stored apiKey) or an inline apiKey+baseUrl pair
+  // (so the user can validate before saving).
+  testConnection: adminProcedure
+    .input(
+      z.object({
+        id: z.number().optional(),
+        apiKey: z.string().optional(),
+        baseUrl: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      let apiKey = input.apiKey || "";
+      let baseUrl = input.baseUrl || "";
+      if (input.id) {
+        const existing = (await db.listGlobalApiKeys()).find((k) => k.id === input.id);
+        if (!existing) throw new Error("Key not found");
+        apiKey = existing.apiKey || "";
+        baseUrl = existing.baseUrl || "";
+      }
+      if (!apiKey || !baseUrl) throw new Error("apiKey and baseUrl required");
+      try {
+        const url = `${baseUrl.replace(/\/$/, "")}/models`;
+        const resp = await fetch(url, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          return { success: false, error: `HTTP ${resp.status}: ${t.slice(0, 200)}`, modelCount: 0, sampleModels: [] as string[] };
+        }
+        const data: any = await resp.json();
+        const models: any[] = data?.data || data?.models || [];
+        const sample = models.slice(0, 10).map((m: any) => m.id || m.name || String(m));
+        return { success: true, modelCount: models.length, sampleModels: sample, provider: detectProvider(baseUrl) };
+      } catch (e: any) {
+        return { success: false, error: String(e?.message || e).slice(0, 300), modelCount: 0, sampleModels: [] as string[] };
+      }
+    }),
+
+  // For each platform, compute its current active provider and the fallback one.
+  // Used by the ConfigPlatforms route-preview table.
+  routePreview: protectedProcedure.query(async () => {
+    const primary = await getPrimaryProvider();
+    const baiAvail = !!(await getActiveKeyForProvider("bai"));
+    const orAvail = !!(await getActiveKeyForProvider("openrouter"));
+    const rows: { platform: string; actual: "bai" | "openrouter" | "none"; fallback: "bai" | "openrouter" | "none"; reason: string }[] = [];
+    for (const platform of PLATFORMS) {
+      const r = await resolveProviderForPlatform(platform);
+      const actual = (r.provider ?? "none") as "bai" | "openrouter" | "none";
+      let fallback: "bai" | "openrouter" | "none" = "none";
+      if (BAI_SUPPORTED_PLATFORMS.includes(platform)) {
+        if (actual === "bai") fallback = orAvail ? "openrouter" : "none";
+        else if (actual === "openrouter") fallback = baiAvail ? "bai" : "none";
+      } else {
+        fallback = "none"; // BAI-uncovered: no fallback (OpenRouter is the only option)
+      }
+      rows.push({ platform, actual, fallback, reason: r.reason });
+    }
+    return { primary, rows, baiAvailable: baiAvail, openrouterAvailable: orAvail };
+  }),
+});
+
+// ==================== System Configs Router ====================
+const sysConfigsRouter = router({
+  getPrimaryProvider: protectedProcedure.query(async () => {
+    return await getPrimaryProvider();
+  }),
+  setPrimaryProvider: adminProcedure
+    .input(z.object({ provider: z.enum(["bai", "openrouter"]) }))
+    .mutation(async ({ input }) => {
+      await db.setSysConfig("llm_primary_provider", input.provider);
+      log.info(`Primary LLM provider switched to: ${input.provider}`);
+      return { success: true, provider: input.provider };
     }),
 });
 
@@ -1740,6 +1926,7 @@ export const appRouter = router({
   alerts: alertsRouter,
   platformConfigs: platformConfigsRouter,
   globalApiKeys: globalApiKeysRouter,
+  sysConfigs: sysConfigsRouter,
   weeklyReports: weeklyReportsRouter,
   urlMatchRules: urlMatchRulesRouter,
   scheduler: schedulerRouter,

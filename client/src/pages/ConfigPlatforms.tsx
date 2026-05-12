@@ -22,10 +22,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useMemo } from "react";
 import {
   Settings, Loader2, Eye, EyeOff, Key, Globe2, Plus, Trash2, ChevronRight, Check, ChevronDown,
+  Zap, ArrowRightLeft, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_OPENROUTER_MODELS, PLATFORM_RECOMMENDED_PROVIDER, type Platform,
+  PLATFORMS, PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAI_MODELS, BAI_SUPPORTED_PLATFORMS, BAI_BASE_URL, OPENROUTER_BASE_URL,
+  PLATFORM_RECOMMENDED_PROVIDER, type Platform, type LLMProvider,
 } from "@shared/geo-types";
 import { useRole } from "@/hooks/useRole";
 
@@ -127,6 +129,9 @@ export default function ConfigPlatforms() {
           管理AI平台的启用状态、API密钥和采集参数。共 {configuredPlatforms.length} 个平台，已启用 {enabledCount} 个。
         </p>
       </div>
+
+      {/* Primary Provider switch + route preview */}
+      <PrimaryProviderCard />
 
       {/* Global API Config Card - clickable */}
       <Card
@@ -615,53 +620,13 @@ function GlobalApiKeysSheet({
           )}
 
           {globalKeysList.map((key) => (
-            <Card key={key.id} className={!key.isActive ? "opacity-60" : ""}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: key.isActive ? "#22c55e" : "#9ca3af" }} />
-                    <h4 className="font-semibold text-sm">{key.name}</h4>
-                  </div>
-                  <div className={`flex items-center gap-1${!canEdit ? " invisible" : ""}`}>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleEdit(key)}>
-                      编辑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-destructive hover:text-destructive"
-                      onClick={() => deleteMutation.mutate({ id: key.id })}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-xs space-y-1">
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-16 shrink-0">Base URL</span>
-                    <span className="font-mono truncate">{key.baseUrl || "—"}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-16 shrink-0">API Key</span>
-                    <span className="font-mono">{key.apiKey ? "••••••••" + key.apiKey.slice(-4) : "—"}</span>
-                  </div>
-                  <div className="flex gap-2 items-start">
-                    <span className="text-muted-foreground w-16 shrink-0 mt-0.5">覆盖平台</span>
-                    <div className="flex flex-wrap gap-1">
-                      {Array.isArray(key.coveredPlatforms) && (key.coveredPlatforms as string[]).length > 0 ? (
-                        (key.coveredPlatforms as string[]).map((p) => (
-                          <Badge key={p} variant="secondary" className="text-[10px] px-1.5">
-                            {PLATFORM_LABELS[p as Platform] || p}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">未指定（不自动覆盖）</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <KeyCard
+              key={key.id}
+              keyObj={key}
+              canEdit={canEdit}
+              onEdit={() => handleEdit(key)}
+              onDelete={() => deleteMutation.mutate({ id: key.id })}
+            />
           ))}
 
           {/* Add new key button */}
@@ -692,6 +657,22 @@ function GlobalApiKeysSheet({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">API Base URL</Label>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="text-[10px] px-2 h-6 rounded border bg-muted/30 hover:bg-muted"
+                        onClick={() => setEditingKey({ ...editingKey, baseUrl: BAI_BASE_URL, name: editingKey.name || "B.AI" })}
+                      >
+                        填入 B.AI
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[10px] px-2 h-6 rounded border bg-muted/30 hover:bg-muted"
+                        onClick={() => setEditingKey({ ...editingKey, baseUrl: OPENROUTER_BASE_URL, name: editingKey.name || "OpenRouter" })}
+                      >
+                        填入 OpenRouter
+                      </button>
+                    </div>
                     <Input
                       placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
                       value={editingKey.baseUrl || ""}
@@ -700,8 +681,9 @@ function GlobalApiKeysSheet({
                       required={!editingKey.id}
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      百炼: https://dashscope.aliyuncs.com/compatible-mode/v1<br />
-                      OpenRouter: https://openrouter.ai/api/v1
+                      B.AI: https://api.b.ai/v1<br />
+                      OpenRouter: https://openrouter.ai/api/v1<br />
+                      百炼: https://dashscope.aliyuncs.com/compatible-mode/v1
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -915,5 +897,256 @@ function AddPlatformDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ==================== Global API Key Card (with provider badge + test) ==================== */
+function KeyCard({ keyObj, canEdit, onEdit, onDelete }: { keyObj: any; canEdit: boolean; onEdit: () => void; onDelete: () => void }) {
+  const { data: primaryProvider } = trpc.sysConfigs.getPrimaryProvider.useQuery();
+  const provider = keyObj.provider as "bai" | "openrouter" | "other";
+  const isPrimary = provider !== "other" && provider === primaryProvider;
+  const isHotStandby = provider !== "other" && !isPrimary;
+  const testMutation = trpc.globalApiKeys.testConnection.useMutation({
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(`连接成功，共 ${res.modelCount} 个模型可用`, {
+          description: res.sampleModels?.slice(0, 5).join(", ") || undefined,
+          duration: 6000,
+        });
+      } else {
+        toast.error(`连接失败: ${res.error || "未知错误"}`);
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const providerLabel = provider === "bai" ? "B.AI" : provider === "openrouter" ? "OpenRouter" : "其他";
+  const coveredPlatforms = Array.isArray(keyObj.coveredPlatforms) ? (keyObj.coveredPlatforms as string[]) : [];
+
+  // For BAI: implicit coverage = BAI_SUPPORTED_PLATFORMS. Show this if user hasn't manually picked.
+  const implicitBai = provider === "bai" && coveredPlatforms.length === 0;
+  const displayedPlatforms = implicitBai ? BAI_SUPPORTED_PLATFORMS : coveredPlatforms;
+
+  return (
+    <Card className={!keyObj.isActive ? "opacity-60" : ""}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: keyObj.isActive ? "#22c55e" : "#9ca3af" }} />
+            <h4 className="font-semibold text-sm">{keyObj.name}</h4>
+            {provider !== "other" && (
+              <Badge variant={isPrimary ? "default" : "secondary"} className="text-[10px]">
+                {providerLabel} · {isPrimary ? "主用" : isHotStandby ? "热备" : "—"}
+              </Badge>
+            )}
+          </div>
+          <div className={`flex items-center gap-1${!canEdit ? " invisible" : ""}`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => testMutation.mutate({ id: keyObj.id })}
+              disabled={testMutation.isPending}
+            >
+              {testMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "测试连接"}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onEdit}>
+              编辑
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-destructive hover:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        <div className="text-xs space-y-1">
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-16 shrink-0">Base URL</span>
+            <span className="font-mono truncate">{keyObj.baseUrl || "—"}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-16 shrink-0">API Key</span>
+            <span className="font-mono">{keyObj.apiKeyMasked || "—"}</span>
+          </div>
+          <div className="flex gap-2 items-start">
+            <span className="text-muted-foreground w-16 shrink-0 mt-0.5">覆盖平台</span>
+            <div className="flex flex-wrap gap-1">
+              {displayedPlatforms.length > 0 ? (
+                <>
+                  {displayedPlatforms.map((p) => (
+                    <Badge key={p} variant="secondary" className="text-[10px] px-1.5">
+                      {PLATFORM_LABELS[p as Platform] || p}
+                    </Badge>
+                  ))}
+                  {implicitBai && (
+                    <span className="text-[10px] text-muted-foreground self-center">(BAI 默认覆盖 7 个)</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">未指定</span>
+              )}
+            </div>
+          </div>
+          {provider === "openrouter" && (
+            <div className="flex gap-2 text-[10px] text-muted-foreground">
+              <span className="w-16 shrink-0">说明</span>
+              <span>BAI 不覆盖的 8 个平台（通义/文心/混元/豆包/Copilot/Perplexity/Grok/Llama）始终走此 Key</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ==================== Primary Provider Card (BAI / OpenRouter switch) ==================== */
+function PrimaryProviderCard() {
+  const { canEdit } = useRole();
+  const utils = trpc.useUtils();
+  const { data: primary } = trpc.sysConfigs.getPrimaryProvider.useQuery();
+  const { data: preview } = trpc.globalApiKeys.routePreview.useQuery();
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const setPrimary = trpc.sysConfigs.setPrimaryProvider.useMutation({
+    onSuccess: (res) => {
+      utils.sysConfigs.getPrimaryProvider.invalidate();
+      utils.globalApiKeys.routePreview.invalidate();
+      toast.success(`已切换主用 Provider → ${res.provider === "bai" ? "B.AI" : "OpenRouter"}`);
+      setShowSwitchConfirm(false);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const isBai = primary === "bai";
+  const targetProvider: LLMProvider = isBai ? "openrouter" : "bai";
+  const targetLabel = isBai ? "OpenRouter" : "B.AI";
+  const baiAvail = preview?.baiAvailable;
+  const orAvail = preview?.openrouterAvailable;
+
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Zap className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold">主用 LLM Provider</h3>
+              <Badge variant="default" className="text-[10px] gap-1">
+                <ShieldCheck className="h-3 w-3" />
+                当前: {isBai ? "B.AI" : "OpenRouter"}
+              </Badge>
+              {!baiAvail && (
+                <Badge variant="secondary" className="text-[10px] text-orange-600">B.AI Key 未配置</Badge>
+              )}
+              {!orAvail && (
+                <Badge variant="secondary" className="text-[10px] text-orange-600">OpenRouter Key 未配置</Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              BAI 覆盖 7 个平台（ChatGPT / Claude / Gemini / DeepSeek / 智谱 / Kimi / MiniMax），默认走 BAI。
+              其余 8 个平台无论怎么切换都走 OpenRouter。切换后立即生效，无需重启。
+            </p>
+
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowSwitchConfirm(true)}
+                disabled={!canEdit || setPrimary.isPending}
+                className="gap-1.5"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                一键切换到 {targetLabel}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewOpen(!previewOpen)}
+                className="gap-1.5"
+              >
+                {previewOpen ? "收起" : "展开"} 路由预览
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${previewOpen ? "rotate-180" : ""}`} />
+              </Button>
+            </div>
+
+            {previewOpen && preview && (
+              <div className="mt-3 rounded-md border overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2 font-medium">平台</th>
+                      <th className="text-left p-2 font-medium">当前走</th>
+                      <th className="text-left p-2 font-medium">备用</th>
+                      <th className="text-left p-2 font-medium text-muted-foreground">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((r) => {
+                      const isBaiCovered = BAI_SUPPORTED_PLATFORMS.includes(r.platform as Platform);
+                      return (
+                        <tr key={r.platform} className="border-t">
+                          <td className="p-2">
+                            <div className="flex items-center gap-1.5">
+                              <span>{PLATFORM_LABELS[r.platform as Platform] || r.platform}</span>
+                              {!isBaiCovered && (
+                                <Badge variant="outline" className="text-[9px] px-1">BAI 不支持</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-2">
+                            <Badge variant={r.actual === "none" ? "destructive" : "default"} className="text-[10px]">
+                              {r.actual === "bai" ? "B.AI" : r.actual === "openrouter" ? "OpenRouter" : "无可用 Key"}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-muted-foreground">
+                            {r.fallback === "none" ? "—" : r.fallback === "bai" ? "B.AI" : "OpenRouter"}
+                          </td>
+                          <td className="p-2 text-muted-foreground font-mono text-[10px]">{r.reason}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <AlertDialog open={showSwitchConfirm} onOpenChange={setShowSwitchConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>切换主用 Provider</AlertDialogTitle>
+              <AlertDialogDescription>
+                确认从 <strong>{isBai ? "B.AI" : "OpenRouter"}</strong> 切换到 <strong>{targetLabel}</strong>？
+                <br /><br />
+                <span className="text-foreground">
+                  BAI 覆盖的 7 个平台将立即改走 {targetLabel}。BAI 不覆盖的 8 个平台不受影响。
+                  <br />
+                  当前另一个 Provider 的 Key:{" "}
+                  <Badge variant={(targetProvider === "bai" ? baiAvail : orAvail) ? "default" : "destructive"}>
+                    {(targetProvider === "bai" ? baiAvail : orAvail) ? "已配置可用" : "尚未配置"}
+                  </Badge>
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => setPrimary.mutate({ provider: targetProvider })}
+              >
+                {setPrimary.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "确认切换"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </CardContent>
+    </Card>
   );
 }

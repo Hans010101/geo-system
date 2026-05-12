@@ -94,6 +94,34 @@ export const PLATFORM_BAILIAN_MODELS: Partial<Record<Platform, string>> = {
   gemini: "gemini-2.0-flash",
 };
 
+// ==================== LLM Provider Routing ====================
+// We support two LLM providers as a primary/hot-standby pair:
+//   - bai (B.AI)       — primary (preferred for the 7 platforms it covers)
+//   - openrouter       — hot standby + fallback for the 8 platforms BAI doesn't cover
+// The active "primary" is stored in sysConfigs (key=llm_primary_provider). Default 'bai'.
+// "BAI 不覆盖的 8 个平台,任何时候都走 OpenRouter" — enforced in resolveProviderForPlatform.
+export type LLMProvider = "bai" | "openrouter";
+
+// BAI model names — used when baseUrl contains 'b.ai'.
+// These are the documented model ids; the real list should be verified at runtime via
+// GET https://api.b.ai/v1/models (call testProviderConnection from the UI).
+export const PLATFORM_BAI_MODELS: Partial<Record<Platform, string>> = {
+  chatgpt: "gpt-5.2",
+  claude: "claude-sonnet-4.6",
+  gemini: "gemini-3-flash",
+  deepseek: "deepseek-v3.2",
+  zhipu: "glm-5",
+  kimi: "kimi-k2.5",
+  minimax: "minimax-m2.5",
+};
+
+// Platforms covered by BAI. BAI-uncovered platforms always go through OpenRouter
+// regardless of the primary-provider switch.
+export const BAI_SUPPORTED_PLATFORMS: Platform[] = Object.keys(PLATFORM_BAI_MODELS) as Platform[];
+
+export const BAI_BASE_URL = "https://api.b.ai/v1";
+export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
 // Brand line types
 export const BRAND_LINES = ["sun_yuchen", "tron", "competitor"] as const;
 export type BrandLine = (typeof BRAND_LINES)[number];

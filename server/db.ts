@@ -17,6 +17,7 @@ import {
   schedulerConfigs,
   notificationConfigs,
   notificationLogs,
+  sysConfigs,
   type InsertQuestion,
   type InsertCollection,
   type InsertCitation,
@@ -963,6 +964,36 @@ export async function upsertSchedulerConfig(data: Partial<InsertSchedulerConfig>
       concurrency: data.concurrency ?? 5,
       lastRunAt: data.lastRunAt ?? null,
     });
+  }
+}
+
+// ==================== System Config (singleton k/v) Helpers ====================
+export async function getSysConfig(key: string): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(sysConfigs)
+    .where(eq(sysConfigs.configKey, key))
+    .limit(1);
+  return result[0]?.configValue ?? null;
+}
+
+export async function setSysConfig(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db
+    .select()
+    .from(sysConfigs)
+    .where(eq(sysConfigs.configKey, key))
+    .limit(1);
+  if (existing[0]) {
+    await db
+      .update(sysConfigs)
+      .set({ configValue: value })
+      .where(eq(sysConfigs.id, existing[0].id));
+  } else {
+    await db.insert(sysConfigs).values({ configKey: key, configValue: value });
   }
 }
 

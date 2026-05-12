@@ -312,3 +312,17 @@ export const notificationLogs = mysqlTable("notificationLogs", {
 
 export type NotificationLog = typeof notificationLogs.$inferSelect;
 export type InsertNotificationLog = typeof notificationLogs.$inferInsert;
+
+// ==================== System Configs (单例 key-value 配置) ====================
+// Generic key-value store for system-level singletons.
+// Current keys in use:
+//   - "llm_primary_provider": "bai" | "openrouter" (default "bai")
+export const sysConfigs = mysqlTable("sysConfigs", {
+  id: int("id").autoincrement().primaryKey(),
+  configKey: varchar("configKey", { length: 64 }).notNull().unique(),
+  configValue: text("configValue"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SysConfig = typeof sysConfigs.$inferSelect;
+export type InsertSysConfig = typeof sysConfigs.$inferInsert;
