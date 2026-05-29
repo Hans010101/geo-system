@@ -28,6 +28,19 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Session cookies are HS256-signed with JWT_SECRET. An empty secret means anyone can forge
+  // a session for any user (incl. admin). Refuse to boot in production; loudly warn elsewhere.
+  if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "JWT_SECRET must be set in production — an empty signing key allows session forgery."
+      );
+    }
+    console.warn(
+      "[security] JWT_SECRET is not set; sessions are signed with an empty key. Set JWT_SECRET before deploying."
+    );
+  }
+
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
