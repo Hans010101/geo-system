@@ -264,6 +264,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     tools,
     toolChoice,
     tool_choice,
+    maxTokens,
+    max_tokens,
     outputSchema,
     output_schema,
     responseFormat,
@@ -296,10 +298,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768;
-  payload.thinking = {
-    "budget_tokens": 128
-  };
+  // Respect the caller-provided token budget (the InvokeParams already carry maxTokens /
+  // max_tokens). Default to a modest 4096 — large enough for analysis/citation JSON, small
+  // enough to stay under per-model caps. Previously this was hardcoded to 32768, which some
+  // models reject outright.
+  payload.max_tokens = maxTokens ?? max_tokens ?? 4096;
+  // NOTE: do NOT inject a non-standard `thinking` parameter here. budget_tokens=128 was below
+  // most providers' minimum and the field is rejected by OpenAI-compatible endpoints, which
+  // silently broke sentiment analysis and citation extraction. Callers that genuinely need
+  // extended thinking should pass it explicitly.
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
