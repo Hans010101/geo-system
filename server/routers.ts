@@ -73,8 +73,17 @@ function detectProvider(baseUrl: string | null | undefined): LLMProvider | "othe
   return "other";
 }
 
+// Kill-switch: BAI is temporarily disabled because its baseUrl/model ids were never
+// verified, which spiked the collection error rate. While this is false, all routing
+// runs through OpenRouter and BAI keys are ignored everywhere (primary + fallback).
+// Flip back to true (and re-verify PLATFORM_BAI_MODELS via /models) to re-enable.
+const BAI_ENABLED = false;
+
 // Resolve the active globalApiKey for a given provider, or null if none configured.
 async function getActiveKeyForProvider(provider: LLMProvider): Promise<{ apiKey: string; baseUrl: string } | null> {
+  // While BAI is disabled, treat it as if no key were configured so it never gets
+  // picked as primary, fallback, or analysis provider.
+  if (provider === "bai" && !BAI_ENABLED) return null;
   const keys = await db.listGlobalApiKeys();
   for (const k of keys) {
     if (!k.isActive || !k.apiKey || !k.baseUrl) continue;
@@ -85,8 +94,11 @@ async function getActiveKeyForProvider(provider: LLMProvider): Promise<{ apiKey:
   return null;
 }
 
-// Read the configured primary provider (sysConfig key=llm_primary_provider), defaulting to 'bai'.
+// Read the configured primary provider (sysConfig key=llm_primary_provider).
+// Default is OpenRouter; while BAI is disabled we force OpenRouter regardless of the
+// stored value so a lingering "bai" setting can't route traffic to the dead provider.
 async function getPrimaryProvider(): Promise<LLMProvider> {
+  if (!BAI_ENABLED) return "openrouter";
   const v = await db.getSysConfig("llm_primary_provider");
   return v === "openrouter" ? "openrouter" : "bai";
 }
@@ -238,12 +250,12 @@ async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; 
   if (fallbackKey) {
     return { apiKey: fallbackKey.apiKey, baseUrl: fallbackKey.baseUrl, model: resolveAnalysisModel(fallbackKey.baseUrl) };
   }
-  // Legacy: try any other active global key (e.g. 阿里百炼)
+  // Legacy: try any other active global key (e.g. 阿里百炼). Skip BAI while disabled.
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
-    if (gk.isActive && gk.apiKey && gk.baseUrl) {
-      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
-    }
+    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) continue;
+    if (detectProvider(gk.baseUrl) === "bai" && !BAI_ENABLED) continue;
+    return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
   }
   // Fallback to env
   if (ENV.openrouterApiKey) {
@@ -1571,6 +1583,9 @@ const sysConfigsRouter = router({
   setPrimaryProvider: adminProcedure
     .input(z.object({ provider: z.enum(["bai", "openrouter"]) }))
     .mutation(async ({ input }) => {
+      if (input.provider === "bai" && !BAI_ENABLED) {
+        throw new Error("B.AI 已暂时停用，当前仅支持 OpenRouter 作为主用 Provider");
+      }
       await db.setSysConfig("llm_primary_provider", input.provider);
       log.info(`Primary LLM provider switched to: ${input.provider}`);
       return { success: true, provider: input.provider };
