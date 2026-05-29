@@ -40,10 +40,32 @@ const cancelledIds = new Set<number>();
 function cancelCollection(id: number) {
   cancelledIds.add(id);
   setTimeout(() => cancelledIds.delete(id), 5 * 60 * 1000);
+  // Persist the cancel so other instances / a restart honor it (the in-memory Set is
+  // process-local). Only flip records still "pending" so we never clobber a finished one.
+  void (async () => {
+    try {
+      const c = await db.getCollectionById(id);
+      if (c && c.status === "pending") {
+        await db.updateCollection(id, { status: "cancelled", errorMessage: "cancelled by user" });
+      }
+    } catch { /* best-effort */ }
+  })();
 }
 
 function isCancelled(id: number): boolean {
   return cancelledIds.has(id);
+}
+
+// Cross-instance cancel check: the local Set OR a persisted "cancelled" status. Used at the
+// few decision points where a stale write would otherwise resurrect a cancelled collection.
+async function isCancelledNow(id: number): Promise<boolean> {
+  if (cancelledIds.has(id)) return true;
+  try {
+    const c = await db.getCollectionById(id);
+    return c?.status === "cancelled";
+  } catch {
+    return false;
+  }
 }
 
 // ==================== Graceful Shutdown ====================
@@ -490,7 +512,7 @@ async function executeCollection(
     return { success: false, error: "shutting-down" };
   }
 
-  if (isCancelled(collectionId)) {
+  if (await isCancelledNow(collectionId)) {
     log.info(`Collection ${collectionId} cancelled before execution`, { traceId });
     return { success: false, error: "cancelled" };
   }
@@ -516,7 +538,7 @@ async function executeCollection(
       traceId
     );
 
-    if (isCancelled(collectionId)) {
+    if (await isCancelledNow(collectionId)) {
       log.info(`Collection ${collectionId} cancelled after LLM call`, { traceId });
       return { success: false, error: "cancelled" };
     }
