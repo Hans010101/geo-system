@@ -19,6 +19,8 @@ const indexes = [
   'CREATE INDEX idx_alerts_createdAt ON alerts(createdAt)',
   'CREATE INDEX idx_alerts_isRead ON alerts(isRead)',
   'CREATE INDEX idx_alerts_composite ON alerts(createdAt, isRead)',
+  'CREATE INDEX idx_collections_status_timestamp ON collections(status, timestamp)',
+  'CREATE INDEX idx_alerts_relatedQuestionId ON alerts(relatedQuestionId)',
 ];
 
 async function main() {

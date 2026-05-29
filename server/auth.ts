@@ -11,6 +11,60 @@ import { parse as parseCookieHeader } from "cookie";
 
 const scryptAsync = promisify(scrypt);
 
+// ==================== Rate Limiting (in-memory, zero-dependency) ====================
+
+const RATE_LIMIT_DEFAULT_MAX = 10;
+const RATE_LIMIT_DEFAULT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+// Module-level store: key -> array of request timestamps (ms)
+const rateLimitStore = new Map<string, number[]>();
+
+/**
+ * Sliding-window rate limiter. Pure & testable: pass `now` to control time.
+ * Records a hit when allowed. Lazily prunes timestamps outside the window.
+ */
+export function checkRateLimit(
+  key: string,
+  opts?: { max?: number; windowMs?: number },
+  now: number = Date.now(),
+): { allowed: boolean; retryAfterMs: number } {
+  const max = opts?.max ?? RATE_LIMIT_DEFAULT_MAX;
+  const windowMs = opts?.windowMs ?? RATE_LIMIT_DEFAULT_WINDOW_MS;
+  const windowStart = now - windowMs;
+
+  // Lazily prune timestamps that have fallen outside the current window.
+  const existing = rateLimitStore.get(key) ?? [];
+  const recent = existing.filter((ts) => ts > windowStart);
+
+  if (recent.length >= max) {
+    // Over the limit — do not record this hit. retryAfterMs is the time until
+    // the oldest in-window timestamp expires.
+    const oldest = recent[0];
+    const retryAfterMs = Math.max(0, oldest + windowMs - now);
+    rateLimitStore.set(key, recent);
+    return { allowed: false, retryAfterMs };
+  }
+
+  recent.push(now);
+  rateLimitStore.set(key, recent);
+  return { allowed: true, retryAfterMs: 0 };
+}
+
+/** Reset the counter for a key (e.g. after a successful login). */
+export function resetRateLimit(key: string): void {
+  rateLimitStore.delete(key);
+}
+
+/** Resolve the client IP from a request, with undefined fallbacks. */
+function getClientIp(req: Request): string {
+  const xff = req.headers["x-forwarded-for"];
+  if (xff) {
+    const first = (Array.isArray(xff) ? xff[0] : xff).split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
 // ==================== Password Hashing ====================
 
 export async function hashPassword(plain: string): Promise<string> {
@@ -101,6 +155,14 @@ export function registerAuthRoutes(app: Express) {
   // Register
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
+      const rateKey = `${getClientIp(req)}:register`;
+      const rate = checkRateLimit(rateKey);
+      if (!rate.allowed) {
+        res.setHeader("Retry-After", Math.ceil(rate.retryAfterMs / 1000));
+        res.status(429).json({ error: "Too many attempts, please try again later." });
+        return;
+      }
+
       const { username, password } = req.body;
       if (!username || !password) {
         res.status(400).json({ error: "请输入用户名和密码" });
@@ -171,6 +233,14 @@ export function registerAuthRoutes(app: Express) {
   // Login
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
+      const rateKey = `${getClientIp(req)}:login`;
+      const rate = checkRateLimit(rateKey);
+      if (!rate.allowed) {
+        res.setHeader("Retry-After", Math.ceil(rate.retryAfterMs / 1000));
+        res.status(429).json({ error: "Too many attempts, please try again later." });
+        return;
+      }
+
       const { username, password } = req.body;
       if (!username || !password) {
         res.status(400).json({ error: "请输入用户名和密码" });
@@ -195,6 +265,9 @@ export function registerAuthRoutes(app: Express) {
       }
 
       await db.upsertUser({ openId: username, lastSignedIn: new Date() });
+
+      // Successful login — reset the rate-limit counter for this client.
+      resetRateLimit(rateKey);
 
       const sessionToken = await createSessionToken(user.openId, user.name || username);
       const cookieOptions = getSessionCookieOptions(req);

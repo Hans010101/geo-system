@@ -46,6 +46,77 @@ function isCancelled(id: number): boolean {
   return cancelledIds.has(id);
 }
 
+// ==================== Graceful Shutdown ====================
+// When the process is asked to terminate, stop *starting* new collection work so in-flight
+// requests can drain instead of leaving half-written records. Wired from the server entry.
+let shuttingDown = false;
+export function beginShutdown() { shuttingDown = true; }
+export function isShuttingDown() { return shuttingDown; }
+
+// ==================== Global Outbound LLM Rate Limiter ====================
+// Caps concurrent outbound LLM requests and enforces a minimum spacing between launches, so
+// overlapping batches (plus analysis/citation calls) can't stampede a provider into 429s.
+const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 4);
+const LLM_MIN_INTERVAL_MS = Number(process.env.LLM_MIN_INTERVAL_MS || 250);
+let llmActive = 0;
+let llmLastStart = 0;
+const llmWaiters: (() => void)[] = [];
+async function acquireLlmSlot(): Promise<void> {
+  if (llmActive >= LLM_MAX_CONCURRENCY) {
+    await new Promise<void>((resolve) => llmWaiters.push(resolve));
+  }
+  llmActive++;
+  const wait = llmLastStart + LLM_MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  llmLastStart = Date.now();
+}
+function releaseLlmSlot(): void {
+  llmActive = Math.max(0, llmActive - 1);
+  const next = llmWaiters.shift();
+  if (next) next();
+}
+export async function withLlmRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireLlmSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseLlmSlot();
+  }
+}
+
+// ==================== Stale Collection Cleanup ====================
+// Collections that stay "pending" far longer than any collection should take were almost
+// certainly abandoned by a crashed/restarted process. Mark them failed so they surface in
+// health stats and can be retried, instead of lingering forever. Safe to call on an interval.
+// Failure-rate alerting thresholds for a completed batch.
+const FAILURE_ALERT_RATE = Number(process.env.FAILURE_ALERT_RATE || 0.3);
+const FAILURE_ALERT_MIN_SETTLED = Number(process.env.FAILURE_ALERT_MIN_SETTLED || 5);
+
+const STALE_PENDING_MINUTES = Number(process.env.STALE_PENDING_MINUTES || 15);
+export async function cleanupStaleCollections(): Promise<number> {
+  try {
+    const database = await db.getDb();
+    if (!database) return 0;
+    const { collections } = await import("../drizzle/schema");
+    const { sql, eq, and } = await import("drizzle-orm");
+    const stale = await database
+      .select({ id: collections.id })
+      .from(collections)
+      .where(and(
+        eq(collections.status, "pending"),
+        sql`${collections.createdAt} < DATE_SUB(NOW(), INTERVAL ${sql.raw(String(STALE_PENDING_MINUTES))} MINUTE)`,
+      ));
+    for (const s of stale) {
+      await db.updateCollection(s.id, { status: "failed", errorMessage: "stale-timeout: abandoned in pending state" });
+    }
+    if (stale.length > 0) log.warn(`Cleaned up ${stale.length} stale pending collection(s)`);
+    return stale.length;
+  } catch (error: any) {
+    log.warn(`Stale cleanup failed: ${error.message}`);
+    return 0;
+  }
+}
+
 // ==================== Model Name Resolution ====================
 // Pick the correct model name based on which API provider is being used
 function resolveModelForBaseUrl(platform: string, baseUrl: string, platformModelOverride?: string | null): string {
@@ -340,16 +411,18 @@ async function callExternalLLM(
 
         let response: Response;
         try {
-          response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              model: config.model,
-              messages,
-              max_tokens: 4096,
-            }),
-            signal: controller.signal,
-          });
+          response = await withLlmRateLimit(() =>
+            fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                model: config.model,
+                messages,
+                max_tokens: 4096,
+              }),
+              signal: controller.signal,
+            })
+          );
         } finally {
           clearTimeout(timer);
         }
@@ -411,6 +484,11 @@ async function executeCollection(
   platform: string
 ): Promise<{ success: boolean; error?: string }> {
   const traceId = `col-${collectionId}-${nanoid(6)}`;
+
+  if (isShuttingDown()) {
+    log.info(`Collection ${collectionId} not started: server shutting down`, { traceId });
+    return { success: false, error: "shutting-down" };
+  }
 
   if (isCancelled(collectionId)) {
     log.info(`Collection ${collectionId} cancelled before execution`, { traceId });
@@ -535,7 +613,7 @@ async function extractCitations(collectionId: number, responseText: string, trac
     const citationApiKey = await getAnyActiveApiKey();
     if (responseText.length > 200 && citationApiKey) {
       try {
-        const extractionResult = await invokeLLM({
+        const extractionResult = await withLlmRateLimit(() => invokeLLM({
           apiKey: citationApiKey.apiKey,
           baseUrl: citationApiKey.baseUrl,
           model: citationApiKey.model,
@@ -551,7 +629,7 @@ async function extractCitations(collectionId: number, responseText: string, trac
             { role: "user", content: responseText.slice(0, 3000) },
           ],
           response_format: { type: "json_object" },
-        });
+        }));
 
         const llmContent = typeof extractionResult.choices[0]?.message?.content === "string"
           ? extractionResult.choices[0].message.content
@@ -700,7 +778,7 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
   }
 }`;
 
-    const result = await invokeLLM({
+    const result = await withLlmRateLimit(() => invokeLLM({
       apiKey: analysisApiKey.apiKey,
       baseUrl: analysisApiKey.baseUrl,
       model: analysisApiKey.model,
@@ -709,7 +787,7 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
         { role: "user", content: prompt },
       ],
       response_format: { type: "json_object" },
-    });
+    }));
 
     const content = typeof result.choices[0]?.message?.content === "string"
       ? result.choices[0].message.content
@@ -887,7 +965,9 @@ const collectionsRouter = router({
       }).optional()
     )
     .query(async ({ input }) => {
-      return db.listCollections(input || {});
+      // List view never renders the full answer; skip the large responseText/rawResponse
+      // blobs. The detail sheet fetches the full row via collections.get.
+      return db.listCollections({ ...(input || {}), includeResponseText: false });
     }),
 
   get: protectedProcedure
@@ -1097,6 +1177,24 @@ const collectionsRouter = router({
             }).catch(() => {});
           }
         } catch {}
+
+        // Failure-rate alert: if a meaningful share of this batch failed, push a system
+        // notification so a provider/config regression is caught within minutes.
+        try {
+          const settled = updatedProgress.completed + updatedProgress.failed;
+          const failRate = settled > 0 ? updatedProgress.failed / settled : 0;
+          if (settled >= FAILURE_ALERT_MIN_SETTLED && failRate >= FAILURE_ALERT_RATE) {
+            const pct = Math.round(failRate * 100);
+            dispatchNotification({
+              messageType: "alert",
+              title: `采集失败率偏高：${pct}%（批次 ${input.batchId}）`,
+              content: `本批次共 ${updatedProgress.total} 项，失败 ${updatedProgress.failed} / 已完成 ${settled}（失败率 ${pct}%）。请检查 API 提供商配置与额度。`,
+              severity: failRate >= 0.6 ? "critical" : "high",
+              dedupKey: `batch_failrate:${input.batchId}`,
+            }).catch(() => {});
+            log.warn(`High failure rate for batch ${input.batchId}: ${pct}% (${updatedProgress.failed}/${settled})`);
+          }
+        } catch {}
       }
 
       return {
@@ -1131,7 +1229,9 @@ const collectionsRouter = router({
       }
       const stale = await database.select({ id: collections.id }).from(collections).where(and(...conditions));
       for (const s of stale) {
-        await db.updateCollection(s.id, { status: "pending" });
+        // Mark failed (not pending→pending, which was a no-op) so the records surface in
+        // health stats and can be retried via batchRetry.
+        await db.updateCollection(s.id, { status: "failed", errorMessage: "stale-timeout: reset by admin" });
       }
       return { reset: stale.length };
     }),
@@ -1257,6 +1357,17 @@ const collectionsRouter = router({
 
 // ==================== Dashboard Router ====================
 const dashboardRouter = router({
+  // Collection health / error-rate overview for the dashboard. Surfaces per-platform
+  // success rate, top error messages, and successful-but-unanalyzed records.
+  collectionHealth: protectedProcedure
+    .input(z.object({ hours: z.number().min(1).max(720).optional() }).optional())
+    .query(async ({ input }) => {
+      const hours = input?.hours ?? 24;
+      const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+      const stats = await db.getCollectionHealthStats(sinceMs);
+      return { hours, ...stats };
+    }),
+
   summary: protectedProcedure
     .input(
       z.object({
@@ -1685,7 +1796,7 @@ const weeklyReportsRouter = router({
       const summary = await db.getDashboardSummary(startTime, endTime);
       const heatmap = await db.getHeatmapData(startTime, endTime);
       const topCited = await db.getTopCitedUrls(20, startTime, endTime);
-      const alertsList = await db.listAlerts({ limit: 50 });
+      const alertsList = await db.listAlerts({ startTime, endTime, limit: 50 });
 
       const reportPeriod = `${startDate.toISOString().split("T")[0]} ~ ${endDate.toISOString().split("T")[0]}`;
 
@@ -1778,6 +1889,7 @@ const schedulerState = {
   nextRunAt: null as number | null,
   concurrency: 5,
   job: null as any,
+  running: false,
 };
 
 async function initScheduler() {
@@ -1796,6 +1908,15 @@ async function initScheduler() {
   try {
     const cron = await import("node-cron");
     const task = cron.schedule(schedulerState.cronExpression, async () => {
+      if (schedulerState.running) {
+        log.warn("Scheduled collection skipped: previous run still in progress");
+        return;
+      }
+      if (isShuttingDown()) {
+        log.warn("Scheduled collection skipped: server shutting down");
+        return;
+      }
+      schedulerState.running = true;
       log.info("Scheduled collection triggered");
       schedulerState.lastRunAt = Date.now();
       db.upsertSchedulerConfig({ lastRunAt: schedulerState.lastRunAt }).catch(() => {});
@@ -1833,6 +1954,8 @@ async function initScheduler() {
         await runBatchConcurrently(tasks, batchId, schedulerState.concurrency);
       } catch (error: any) {
         log.error(`Scheduled collection failed: ${error.message}`);
+      } finally {
+        schedulerState.running = false;
       }
     }, {
       timezone: "Asia/Shanghai",
