@@ -2007,3 +2007,11 @@ export const appRouter = router({
 });
 
 export type AppRouter = typeof appRouter;
+
+// Internal helpers exposed for unit testing only — not part of the tRPC surface.
+export const __testing = {
+  resolveApiConfigChain,
+  callExternalLLM,
+  isRetryableError,
+  BAI_ENABLED,
+};
