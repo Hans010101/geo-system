@@ -79,7 +79,7 @@ function useBatchPoller() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ json: { batchId: id, concurrency: 5 } }),
+          body: JSON.stringify({ json: { batchId: id, concurrency: 8 } }),
         });
         const json = await res.json();
         const result = json?.result?.data?.json || json?.result?.data || {};
@@ -332,6 +332,8 @@ export default function ConfigCollection() {
         return <Loader2 className="h-3.5 w-3.5 text-yellow-500 animate-spin" />;
       case "timeout":
         return <Clock className="h-3.5 w-3.5 text-orange-500" />;
+      case "cancelled":
+        return <XCircle className="h-3.5 w-3.5 text-muted-foreground" />;
       default:
         return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
     }
@@ -344,6 +346,7 @@ export default function ConfigCollection() {
       case "refused": return "拒绝";
       case "timeout": return "超时";
       case "pending": return "执行中";
+      case "cancelled": return "已取消";
       default: return status;
     }
   };

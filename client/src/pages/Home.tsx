@@ -14,6 +14,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -56,6 +58,7 @@ export default function Home() {
   const range = useMemo(() => getTimeRange(timeRange), [timeRange]);
 
   const { data: summary, isLoading: summaryLoading } = trpc.dashboard.summary.useQuery(range, { staleTime: 30000 });
+  const { data: health } = trpc.dashboard.collectionHealth.useQuery({ hours: 24 }, { staleTime: 30000 });
   const { data: heatmapData } = trpc.dashboard.heatmap.useQuery(range, { staleTime: 30000 });
   const { data: alertsResult } = trpc.alerts.list.useQuery(
     { limit: ALERTS_PAGE_SIZE, offset: alertPage * ALERTS_PAGE_SIZE },
@@ -163,6 +166,59 @@ export default function Home() {
         <KPICard title="引用命中率" value={summary ? `${summary.ourContentRate}%` : "—"} icon={<BarChart3 className="h-4 w-4" />} loading={summaryLoading} color="text-violet-600" />
         <KPICard title="未读预警" value={summary?.alertCount?.toString() || "0"} icon={<Bell className="h-4 w-4" />} loading={summaryLoading} color="text-orange-600" />
       </div>
+
+      {/* Collection Health — last 24h success rate + failure breakdown */}
+      {health && health.total > 0 && (() => {
+        const ratePct = Math.round(health.successRate * 100);
+        const healthy = ratePct >= 90;
+        const worstPlatforms = health.perPlatform.filter((p) => p.failed > 0).slice(0, 4);
+        return (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                {healthy
+                  ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  : <AlertTriangle className="h-4 w-4 text-orange-600" />}
+                采集健康度（近 24h）
+              </CardTitle>
+              <Badge variant={healthy ? "secondary" : "destructive"}>
+                成功率 {ratePct}%
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                <span>总计 <b className="text-foreground">{health.total}</b></span>
+                <span>成功 <b className="text-emerald-600">{health.success}</b></span>
+                <span>失败 <b className="text-red-600">{health.failed}</b></span>
+                {health.pending > 0 && <span>进行中 <b className="text-foreground">{health.pending}</b></span>}
+                {health.successMissingAnalysis > 0 && (
+                  <span title="采集成功但分析缺失，可在采集记录中重新分析">
+                    成功但未分析 <b className="text-amber-600">{health.successMissingAnalysis}</b>
+                  </span>
+                )}
+              </div>
+              {worstPlatforms.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {worstPlatforms.map((p) => (
+                    <Badge key={p.platform} variant="outline" className="font-normal">
+                      {PLATFORM_LABELS[p.platform as Platform] || p.platform}：失败 {p.failed}/{p.total}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {health.topErrors.length > 0 && (
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  {health.topErrors.slice(0, 3).map((e, i) => (
+                    <div key={i} className="truncate">
+                      <span className="text-red-600">×{e.count}</span> {e.errorMessage}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Platform Breakdown — domestic / international split */}
       {summary?.platformBreakdown && summary.platformBreakdown.length > 0 && (() => {

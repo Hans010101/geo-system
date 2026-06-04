@@ -40,10 +40,103 @@ const cancelledIds = new Set<number>();
 function cancelCollection(id: number) {
   cancelledIds.add(id);
   setTimeout(() => cancelledIds.delete(id), 5 * 60 * 1000);
+  // Persist the cancel so other instances / a restart honor it (the in-memory Set is
+  // process-local). Only flip records still "pending" so we never clobber a finished one.
+  void (async () => {
+    try {
+      const c = await db.getCollectionById(id);
+      if (c && c.status === "pending") {
+        await db.updateCollection(id, { status: "cancelled", errorMessage: "cancelled by user" });
+      }
+    } catch { /* best-effort */ }
+  })();
 }
 
 function isCancelled(id: number): boolean {
   return cancelledIds.has(id);
+}
+
+// Cross-instance cancel check: the local Set OR a persisted "cancelled" status. Used at the
+// few decision points where a stale write would otherwise resurrect a cancelled collection.
+async function isCancelledNow(id: number): Promise<boolean> {
+  if (cancelledIds.has(id)) return true;
+  try {
+    const c = await db.getCollectionById(id);
+    return c?.status === "cancelled";
+  } catch {
+    return false;
+  }
+}
+
+// ==================== Graceful Shutdown ====================
+// When the process is asked to terminate, stop *starting* new collection work so in-flight
+// requests can drain instead of leaving half-written records. Wired from the server entry.
+let shuttingDown = false;
+export function beginShutdown() { shuttingDown = true; }
+export function isShuttingDown() { return shuttingDown; }
+
+// ==================== Global Outbound LLM Rate Limiter ====================
+// Caps concurrent outbound LLM requests and enforces a minimum spacing between launches, so
+// overlapping batches (plus analysis/citation calls) can't stampede a provider into 429s.
+const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 8);
+const LLM_MIN_INTERVAL_MS = Number(process.env.LLM_MIN_INTERVAL_MS || 0);
+let llmActive = 0;
+let llmLastStart = 0;
+const llmWaiters: (() => void)[] = [];
+async function acquireLlmSlot(): Promise<void> {
+  if (llmActive >= LLM_MAX_CONCURRENCY) {
+    await new Promise<void>((resolve) => llmWaiters.push(resolve));
+  }
+  llmActive++;
+  const wait = llmLastStart + LLM_MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  llmLastStart = Date.now();
+}
+function releaseLlmSlot(): void {
+  llmActive = Math.max(0, llmActive - 1);
+  const next = llmWaiters.shift();
+  if (next) next();
+}
+export async function withLlmRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireLlmSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseLlmSlot();
+  }
+}
+
+// ==================== Stale Collection Cleanup ====================
+// Collections that stay "pending" far longer than any collection should take were almost
+// certainly abandoned by a crashed/restarted process. Mark them failed so they surface in
+// health stats and can be retried, instead of lingering forever. Safe to call on an interval.
+// Failure-rate alerting thresholds for a completed batch.
+const FAILURE_ALERT_RATE = Number(process.env.FAILURE_ALERT_RATE || 0.3);
+const FAILURE_ALERT_MIN_SETTLED = Number(process.env.FAILURE_ALERT_MIN_SETTLED || 5);
+
+const STALE_PENDING_MINUTES = Number(process.env.STALE_PENDING_MINUTES || 15);
+export async function cleanupStaleCollections(): Promise<number> {
+  try {
+    const database = await db.getDb();
+    if (!database) return 0;
+    const { collections } = await import("../drizzle/schema");
+    const { sql, eq, and } = await import("drizzle-orm");
+    const stale = await database
+      .select({ id: collections.id })
+      .from(collections)
+      .where(and(
+        eq(collections.status, "pending"),
+        sql`${collections.createdAt} < DATE_SUB(NOW(), INTERVAL ${sql.raw(String(STALE_PENDING_MINUTES))} MINUTE)`,
+      ));
+    for (const s of stale) {
+      await db.updateCollection(s.id, { status: "failed", errorMessage: "stale-timeout: abandoned in pending state" });
+    }
+    if (stale.length > 0) log.warn(`Cleaned up ${stale.length} stale pending collection(s)`);
+    return stale.length;
+  } catch (error: any) {
+    log.warn(`Stale cleanup failed: ${error.message}`);
+    return 0;
+  }
 }
 
 // ==================== Model Name Resolution ====================
@@ -73,8 +166,17 @@ function detectProvider(baseUrl: string | null | undefined): LLMProvider | "othe
   return "other";
 }
 
+// Kill-switch: BAI is temporarily disabled because its baseUrl/model ids were never
+// verified, which spiked the collection error rate. While this is false, all routing
+// runs through OpenRouter and BAI keys are ignored everywhere (primary + fallback).
+// Flip back to true (and re-verify PLATFORM_BAI_MODELS via /models) to re-enable.
+const BAI_ENABLED = false;
+
 // Resolve the active globalApiKey for a given provider, or null if none configured.
 async function getActiveKeyForProvider(provider: LLMProvider): Promise<{ apiKey: string; baseUrl: string } | null> {
+  // While BAI is disabled, treat it as if no key were configured so it never gets
+  // picked as primary, fallback, or analysis provider.
+  if (provider === "bai" && !BAI_ENABLED) return null;
   const keys = await db.listGlobalApiKeys();
   for (const k of keys) {
     if (!k.isActive || !k.apiKey || !k.baseUrl) continue;
@@ -85,8 +187,11 @@ async function getActiveKeyForProvider(provider: LLMProvider): Promise<{ apiKey:
   return null;
 }
 
-// Read the configured primary provider (sysConfig key=llm_primary_provider), defaulting to 'bai'.
+// Read the configured primary provider (sysConfig key=llm_primary_provider).
+// Default is OpenRouter; while BAI is disabled we force OpenRouter regardless of the
+// stored value so a lingering "bai" setting can't route traffic to the dead provider.
 async function getPrimaryProvider(): Promise<LLMProvider> {
+  if (!BAI_ENABLED) return "openrouter";
   const v = await db.getSysConfig("llm_primary_provider");
   return v === "openrouter" ? "openrouter" : "bai";
 }
@@ -96,7 +201,7 @@ async function getPrimaryProvider(): Promise<LLMProvider> {
 // Rules:
 //   1. BAI-uncovered platform → always OpenRouter (regardless of switch).
 //   2. BAI-covered platform → primary provider if it has an active key; otherwise fall back to the other provider.
-//   3. If neither provider has a key → caller decides (falls through to platform key / env in resolveApiConfig).
+//   3. If neither provider has a key → caller decides (falls through to platform key / env in resolveApiConfigChain).
 async function resolveProviderForPlatform(platform: string): Promise<{
   provider: LLMProvider | null;
   apiKey: string | null;
@@ -148,72 +253,98 @@ async function resolveProviderForPlatform(platform: string): Promise<{
 }
 
 // ==================== Global API Key Resolution ====================
-// Priority: platform own key > global key (coveredPlatforms) > env OpenRouter > error
-async function resolveApiConfig(platform: string): Promise<{
-  apiKey: string | null;
-  baseUrl: string | null;
+// Build an *ordered list* of API configs to try for a platform, so callExternalLLM can
+// fail over to the next provider when a call actually fails (not just when a key is missing).
+// Priority: platform own key > primary provider > fallback provider > legacy coveredPlatforms key > env OpenRouter.
+type ApiCandidate = {
+  apiKey: string;
+  baseUrl: string;
   model: string;
-  source: "platform" | "global" | "env" | "none";
-}> {
-  const platformConfig = await db.getPlatformConfig(platform);
+  source: "platform" | "global" | "env";
+  label: string;
+};
+
+async function resolveApiConfigChain(platform: string): Promise<ApiCandidate[]> {
+  const candidates: ApiCandidate[] = [];
+  const seen = new Set<string>();
+  const push = (c: ApiCandidate) => {
+    // Dedupe identical baseUrl+model+key so we don't burn retries on the same endpoint twice.
+    const k = `${c.baseUrl}|${c.model}|${c.apiKey.slice(0, 8)}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    candidates.push(c);
+  };
+
+  const p = platform as Platform;
 
   // 1. Platform's own API key
+  const platformConfig = await db.getPlatformConfig(platform);
   if (platformConfig?.apiKeyEncrypted && platformConfig?.apiBaseUrl) {
-    const model = platformConfig.modelVersion ||
-      resolveModelForBaseUrl(platform, platformConfig.apiBaseUrl);
-    return {
+    push({
       apiKey: platformConfig.apiKeyEncrypted,
       baseUrl: platformConfig.apiBaseUrl,
-      model,
+      model: platformConfig.modelVersion || resolveModelForBaseUrl(platform, platformConfig.apiBaseUrl),
       source: "platform",
-    };
+      label: "platform",
+    });
   }
 
-  // 2. Provider router: BAI (primary) ⇄ OpenRouter (hot standby)
-  //    See resolveProviderForPlatform: BAI-uncovered platforms always go through OpenRouter;
-  //    BAI-covered platforms use the configured primary, falling back to the other if the
-  //    primary has no active key.
-  const routed = await resolveProviderForPlatform(platform);
-  if (routed.apiKey && routed.baseUrl) {
-    log.info(`resolveApiConfig: ${platform} routed to provider=${routed.provider} (${routed.reason}), model=${routed.model}, baseUrl=${routed.baseUrl}`);
-    return {
-      apiKey: routed.apiKey,
-      baseUrl: routed.baseUrl,
-      model: routed.model,
-      source: "global",
-    };
+  // 2. Provider chain: primary then the other provider (real hot-standby failover).
+  //    BAI-uncovered platforms only ever use OpenRouter. getActiveKeyForProvider returns
+  //    null for disabled/unconfigured providers, so BAI is skipped while BAI_ENABLED=false.
+  let providerOrder: LLMProvider[];
+  if (!BAI_SUPPORTED_PLATFORMS.includes(p)) {
+    providerOrder = ["openrouter"];
+  } else {
+    const primary = await getPrimaryProvider();
+    const other: LLMProvider = primary === "bai" ? "openrouter" : "bai";
+    providerOrder = [primary, other];
+  }
+  for (const prov of providerOrder) {
+    const key = await getActiveKeyForProvider(prov);
+    if (key) {
+      push({
+        apiKey: key.apiKey,
+        baseUrl: key.baseUrl,
+        model: resolveModelForBaseUrl(platform, key.baseUrl),
+        source: "global",
+        label: prov,
+      });
+    }
   }
 
-  // 2b. Legacy fallback: any globalApiKey that explicitly lists this platform in coveredPlatforms
-  // (e.g. 阿里百炼 still covers Chinese platforms). Keeps existing 百炼 config working.
+  // 2b. Legacy: any globalApiKey that explicitly lists this platform in coveredPlatforms
+  // (e.g. 阿里百炼). BAI / OpenRouter records are already handled above.
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
     if (!gk.isActive || !gk.apiKey || !gk.baseUrl) continue;
-    // Skip BAI / OpenRouter records here — already handled above.
     const prov = detectProvider(gk.baseUrl);
     if (prov === "bai" || prov === "openrouter") continue;
     const covered = (gk.coveredPlatforms as string[]) || [];
     if (covered.includes(platform)) {
-      const model = resolveModelForBaseUrl(platform, gk.baseUrl);
-      log.info(`resolveApiConfig: ${platform} matched legacy global key "${gk.name}", model=${model}, baseUrl=${gk.baseUrl}`);
-      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model, source: "global" };
+      push({
+        apiKey: gk.apiKey,
+        baseUrl: gk.baseUrl,
+        model: resolveModelForBaseUrl(platform, gk.baseUrl),
+        source: "global",
+        label: gk.name || "legacy",
+      });
     }
   }
 
   // 3. Environment variable fallback (OpenRouter)
   if (ENV.openrouterApiKey) {
-    const model = PLATFORM_OPENROUTER_MODELS[platform as Platform] || "openai/gpt-4o";
-    log.info(`resolveApiConfig: ${platform} using env OpenRouter fallback, model=${model}`);
-    return {
+    push({
       apiKey: ENV.openrouterApiKey,
       baseUrl: ENV.openrouterBaseUrl || "https://openrouter.ai/api/v1",
-      model,
+      model: PLATFORM_OPENROUTER_MODELS[p] || "openai/gpt-4o",
       source: "env",
-    };
+      label: "env-openrouter",
+    });
   }
 
-  log.info(`resolveApiConfig: no key found for ${platform}, globalKeys=${globalKeys.length}`);
-  return { apiKey: null, baseUrl: null, model: "openai/gpt-4o", source: "none" };
+  log.info(`resolveApiConfigChain: ${platform} → ${candidates.length} candidate(s): [${candidates.map(c => `${c.label}:${c.model}`).join(", ")}]`);
+  return candidates;
 }
 
 // Get any active API key (for analysis/citation extraction)
@@ -238,12 +369,12 @@ async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; 
   if (fallbackKey) {
     return { apiKey: fallbackKey.apiKey, baseUrl: fallbackKey.baseUrl, model: resolveAnalysisModel(fallbackKey.baseUrl) };
   }
-  // Legacy: try any other active global key (e.g. 阿里百炼)
+  // Legacy: try any other active global key (e.g. 阿里百炼). Skip BAI while disabled.
   const globalKeys = await db.listGlobalApiKeys();
   for (const gk of globalKeys) {
-    if (gk.isActive && gk.apiKey && gk.baseUrl) {
-      return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
-    }
+    if (!gk.isActive || !gk.apiKey || !gk.baseUrl) continue;
+    if (detectProvider(gk.baseUrl) === "bai" && !BAI_ENABLED) continue;
+    return { apiKey: gk.apiKey, baseUrl: gk.baseUrl, model: resolveAnalysisModel(gk.baseUrl) };
   }
   // Fallback to env
   if (ENV.openrouterApiKey) {
@@ -254,96 +385,159 @@ async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; 
 }
 
 // ==================== External LLM Call ====================
+// Decide whether an error is worth retrying *against the same provider*.
+// - HTTP errors carry an explicit `retryable` flag (5xx / 429 → yes; 4xx / model-not-found → no).
+// - Timeouts (AbortError) and network errors have no flag → retry.
+function isRetryableError(error: any): boolean {
+  if (error && typeof error.retryable === "boolean") return error.retryable;
+  return true;
+}
+
 async function callExternalLLM(
   platform: string,
   messages: { role: string; content: string }[],
   traceId: string
 ): Promise<{ content: string; model: string; source: string }> {
-  const config = await resolveApiConfig(platform);
+  const candidates = await resolveApiConfigChain(platform);
 
-  if (!config.apiKey || !config.baseUrl || config.source === "none") {
+  if (candidates.length === 0) {
     throw new Error(`该平台 (${platform}) 未配置 API Key，请在「平台配置」或「全局 API 配置」中设置`);
   }
 
-  const maxRetries = 3;
-  const timeoutMs = 60000;
+  const maxRetriesPerCandidate = Number(process.env.LLM_MAX_RETRIES || 3);
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
+  let lastError: any;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      log.info(`Calling external API for ${platform} (attempt ${attempt}/${maxRetries})`, {
-        traceId, source: config.source, model: config.model,
-      });
+  for (let ci = 0; ci < candidates.length; ci++) {
+    const config = candidates[ci];
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+    for (let attempt = 1; attempt <= maxRetriesPerCandidate; attempt++) {
+      try {
+        log.info(`Calling external API for ${platform} (provider=${config.label}, attempt ${attempt}/${maxRetriesPerCandidate})`, {
+          traceId, source: config.source, model: config.model,
+        });
 
-      // OpenRouter likes HTTP-Referer + X-Title for attribution; BAI / 百炼 don't.
-      const isOpenRouter = config.baseUrl.includes("openrouter.ai");
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
-      };
-      if (isOpenRouter) {
-        headers["HTTP-Referer"] = "https://geo-system.app";
-        headers["X-Title"] = "GEO System";
-      }
-      const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: config.model,
-          messages,
-          max_tokens: 4096,
-        }),
-        signal: controller.signal,
-      });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      clearTimeout(timer);
-
-      if (!response.ok) {
-        const errText = await response.text();
-        // Detect model-not-found errors and give a helpful message
-        if (errText.includes("not a valid model") || errText.includes("model_not_found") || errText.includes("does not exist")) {
-          const rec = PLATFORM_RECOMMENDED_PROVIDER[platform as Platform];
-          const hint = rec ? `，推荐使用「${rec}」提供商` : "";
-          throw new Error(`该平台 (${PLATFORM_LABELS[platform as Platform] || platform}) 的模型 ${config.model} 在当前 API 提供商中不可用${hint}`);
+        // OpenRouter likes HTTP-Referer + X-Title for attribution; BAI / 百炼 don't.
+        const isOpenRouter = config.baseUrl.includes("openrouter.ai");
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+        };
+        if (isOpenRouter) {
+          headers["HTTP-Referer"] = "https://geo-system.app";
+          headers["X-Title"] = "GEO System";
         }
-        throw new Error(`API ${response.status}: ${errText.slice(0, 200)}`);
+
+        let response: Response;
+        try {
+          response = await withLlmRateLimit(() =>
+            fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                model: config.model,
+                messages,
+                max_tokens: 4096,
+              }),
+              signal: controller.signal,
+            })
+          );
+        } finally {
+          clearTimeout(timer);
+        }
+
+        if (!response.ok) {
+          const errText = await response.text();
+          // Model-not-found: not retryable on this provider, but failing over to the next
+          // candidate may succeed, so keep the helpful message and let the loop advance.
+          if (errText.includes("not a valid model") || errText.includes("model_not_found") || errText.includes("does not exist")) {
+            const rec = PLATFORM_RECOMMENDED_PROVIDER[platform as Platform];
+            const hint = rec ? `，推荐使用「${rec}」提供商` : "";
+            const err: any = new Error(`该平台 (${PLATFORM_LABELS[platform as Platform] || platform}) 的模型 ${config.model} 在当前 API 提供商中不可用${hint}`);
+            err.retryable = false;
+            throw err;
+          }
+          const err: any = new Error(`API ${response.status}: ${errText.slice(0, 200)}`);
+          // Retry only transient server-side / rate-limit errors; 4xx (auth, bad request) are not retryable.
+          err.retryable = response.status >= 500 || response.status === 429;
+          throw err;
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || "";
+
+        log.info(`External API success for ${platform}`, {
+          traceId, provider: config.label, model: data.model || config.model, contentLength: content.length,
+        });
+
+        return {
+          content,
+          model: data.model || config.model,
+          source: config.source,
+        };
+      } catch (error: any) {
+        lastError = error;
+        const retryable = isRetryableError(error);
+        log.warn(`External API attempt ${attempt} failed for ${platform} (provider=${config.label}, retryable=${retryable}): ${error.message}`, { traceId });
+        if (retryable && attempt < maxRetriesPerCandidate) {
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+          continue;
+        }
+        // Non-retryable, or retries exhausted → stop hammering this provider.
+        break;
       }
+    }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "";
-
-      log.info(`External API success for ${platform}`, {
-        traceId, model: data.model || config.model, contentLength: content.length,
-      });
-
-      return {
-        content,
-        model: data.model || config.model,
-        source: config.source,
-      };
-    } catch (error: any) {
-      log.warn(`External API attempt ${attempt} failed for ${platform}: ${error.message}`, { traceId });
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+    if (ci < candidates.length - 1) {
+      log.warn(`Provider ${config.label} failed for ${platform}, failing over to next candidate`, { traceId });
     }
   }
 
-  throw new Error(`All retry attempts failed for ${platform}`);
+  throw lastError ?? new Error(`All providers failed for ${platform}`);
 }
 
 // ==================== Collection Execution (P0-1: No more simulation) ====================
+// Secondary pipeline (citations + analysis + alerts). Independent of "did we get an answer",
+// so the batch path can run it off the critical path. Swallows its own errors.
+async function runPostProcessing(
+  collectionId: number,
+  question: { questionId: string; text: string; language: string },
+  responseText: string,
+  platform: string,
+  traceId: string
+): Promise<void> {
+  try {
+    if (await isCancelledNow(collectionId)) return;
+    // Citation extraction + AI analysis write different tables → run concurrently.
+    await Promise.all([
+      extractCitations(collectionId, responseText, traceId),
+      analyzeCollection(collectionId, question.text, responseText, traceId),
+    ]);
+    if (!isCancelled(collectionId)) {
+      await checkAlerts(collectionId, question, platform, traceId);
+    }
+  } catch (e: any) {
+    log.warn(`Post-processing failed for collection ${collectionId}: ${e.message}`, { traceId });
+  }
+}
+
 async function executeCollection(
   collectionId: number,
   question: { questionId: string; text: string; language: string },
-  platform: string
+  platform: string,
+  opts?: { deferPostProcessing?: boolean }
 ): Promise<{ success: boolean; error?: string }> {
   const traceId = `col-${collectionId}-${nanoid(6)}`;
 
-  if (isCancelled(collectionId)) {
+  if (isShuttingDown()) {
+    log.info(`Collection ${collectionId} not started: server shutting down`, { traceId });
+    return { success: false, error: "shutting-down" };
+  }
+
+  if (await isCancelledNow(collectionId)) {
     log.info(`Collection ${collectionId} cancelled before execution`, { traceId });
     return { success: false, error: "cancelled" };
   }
@@ -369,7 +563,7 @@ async function executeCollection(
       traceId
     );
 
-    if (isCancelled(collectionId)) {
+    if (await isCancelledNow(collectionId)) {
       log.info(`Collection ${collectionId} cancelled after LLM call`, { traceId });
       return { success: false, error: "cancelled" };
     }
@@ -385,22 +579,17 @@ async function executeCollection(
       status: "success",
     });
 
-    // Citation extraction (enhanced)
-    if (!isCancelled(collectionId)) {
-      await extractCitations(collectionId, responseText, traceId);
+    // The answer is in and the record is marked success. In batch mode we run the secondary
+    // pipeline (citations/analysis/alerts) off the critical path so the batch round returns as
+    // soon as answers are collected (~3x faster rounds); it's still bounded by withLlmRateLimit.
+    // Manual single-collection keeps it inline so the caller gets a fully-processed result.
+    if (opts?.deferPostProcessing) {
+      void runPostProcessing(collectionId, question, responseText, platform, traceId);
+    } else {
+      await runPostProcessing(collectionId, question, responseText, platform, traceId);
     }
 
-    // AI analysis
-    if (!isCancelled(collectionId)) {
-      await analyzeCollection(collectionId, question.text, responseText, traceId);
-    }
-
-    // Alert checking
-    if (!isCancelled(collectionId)) {
-      await checkAlerts(collectionId, question, platform, traceId);
-    }
-
-    log.info(`Collection ${collectionId} completed successfully`, {
+    log.info(`Collection ${collectionId} answer collected${opts?.deferPostProcessing ? " (analysis deferred)" : ""}`, {
       traceId, platform, apiSource, modelVersion, responseLength: responseText.length,
     });
 
@@ -466,7 +655,7 @@ async function extractCitations(collectionId: number, responseText: string, trac
     const citationApiKey = await getAnyActiveApiKey();
     if (responseText.length > 200 && citationApiKey) {
       try {
-        const extractionResult = await invokeLLM({
+        const extractionResult = await withLlmRateLimit(() => invokeLLM({
           apiKey: citationApiKey.apiKey,
           baseUrl: citationApiKey.baseUrl,
           model: citationApiKey.model,
@@ -482,7 +671,7 @@ async function extractCitations(collectionId: number, responseText: string, trac
             { role: "user", content: responseText.slice(0, 3000) },
           ],
           response_format: { type: "json_object" },
-        });
+        }));
 
         const llmContent = typeof extractionResult.choices[0]?.message?.content === "string"
           ? extractionResult.choices[0].message.content
@@ -631,7 +820,7 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
   }
 }`;
 
-    const result = await invokeLLM({
+    const result = await withLlmRateLimit(() => invokeLLM({
       apiKey: analysisApiKey.apiKey,
       baseUrl: analysisApiKey.baseUrl,
       model: analysisApiKey.model,
@@ -640,7 +829,7 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
         { role: "user", content: prompt },
       ],
       response_format: { type: "json_object" },
-    });
+    }));
 
     const content = typeof result.choices[0]?.message?.content === "string"
       ? result.choices[0].message.content
@@ -705,7 +894,8 @@ async function runBatchConcurrently(
             text: task.question.text,
             language: task.question.language,
           },
-          task.platform
+          task.platform,
+          { deferPostProcessing: true }
         );
       })
     )
@@ -818,7 +1008,9 @@ const collectionsRouter = router({
       }).optional()
     )
     .query(async ({ input }) => {
-      return db.listCollections(input || {});
+      // List view never renders the full answer; skip the large responseText/rawResponse
+      // blobs. The detail sheet fetches the full row via collections.get.
+      return db.listCollections({ ...(input || {}), includeResponseText: false });
     }),
 
   get: protectedProcedure
@@ -963,7 +1155,7 @@ const collectionsRouter = router({
   executeNextBatch: adminProcedure
     .input(z.object({
       batchId: z.string(),
-      concurrency: z.number().min(1).max(10).optional(),
+      concurrency: z.number().min(1).max(20).optional(),
     }))
     .mutation(async ({ input }) => {
       const concurrency = input.concurrency || 5;
@@ -995,7 +1187,8 @@ const collectionsRouter = router({
           return executeCollection(
             col.id,
             { questionId: question.questionId, text: question.text, language: question.language },
-            col.platform
+            col.platform,
+            { deferPostProcessing: true }
           );
         })
       );
@@ -1026,6 +1219,24 @@ const collectionsRouter = router({
               title: msg.title, content: msg.content,
               severity: batchAlerts.some(a => a.severity === "critical") ? "critical" : "high",
             }).catch(() => {});
+          }
+        } catch {}
+
+        // Failure-rate alert: if a meaningful share of this batch failed, push a system
+        // notification so a provider/config regression is caught within minutes.
+        try {
+          const settled = updatedProgress.completed + updatedProgress.failed;
+          const failRate = settled > 0 ? updatedProgress.failed / settled : 0;
+          if (settled >= FAILURE_ALERT_MIN_SETTLED && failRate >= FAILURE_ALERT_RATE) {
+            const pct = Math.round(failRate * 100);
+            dispatchNotification({
+              messageType: "alert",
+              title: `采集失败率偏高：${pct}%（批次 ${input.batchId}）`,
+              content: `本批次共 ${updatedProgress.total} 项，失败 ${updatedProgress.failed} / 已完成 ${settled}（失败率 ${pct}%）。请检查 API 提供商配置与额度。`,
+              severity: failRate >= 0.6 ? "critical" : "high",
+              dedupKey: `batch_failrate:${input.batchId}`,
+            }).catch(() => {});
+            log.warn(`High failure rate for batch ${input.batchId}: ${pct}% (${updatedProgress.failed}/${settled})`);
           }
         } catch {}
       }
@@ -1062,7 +1273,9 @@ const collectionsRouter = router({
       }
       const stale = await database.select({ id: collections.id }).from(collections).where(and(...conditions));
       for (const s of stale) {
-        await db.updateCollection(s.id, { status: "pending" });
+        // Mark failed (not pending→pending, which was a no-op) so the records surface in
+        // health stats and can be retried via batchRetry.
+        await db.updateCollection(s.id, { status: "failed", errorMessage: "stale-timeout: reset by admin" });
       }
       return { reset: stale.length };
     }),
@@ -1188,6 +1401,17 @@ const collectionsRouter = router({
 
 // ==================== Dashboard Router ====================
 const dashboardRouter = router({
+  // Collection health / error-rate overview for the dashboard. Surfaces per-platform
+  // success rate, top error messages, and successful-but-unanalyzed records.
+  collectionHealth: protectedProcedure
+    .input(z.object({ hours: z.number().min(1).max(720).optional() }).optional())
+    .query(async ({ input }) => {
+      const hours = input?.hours ?? 24;
+      const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+      const stats = await db.getCollectionHealthStats(sinceMs);
+      return { hours, ...stats };
+    }),
+
   summary: protectedProcedure
     .input(
       z.object({
@@ -1571,6 +1795,9 @@ const sysConfigsRouter = router({
   setPrimaryProvider: adminProcedure
     .input(z.object({ provider: z.enum(["bai", "openrouter"]) }))
     .mutation(async ({ input }) => {
+      if (input.provider === "bai" && !BAI_ENABLED) {
+        throw new Error("B.AI 已暂时停用，当前仅支持 OpenRouter 作为主用 Provider");
+      }
       await db.setSysConfig("llm_primary_provider", input.provider);
       log.info(`Primary LLM provider switched to: ${input.provider}`);
       return { success: true, provider: input.provider };
@@ -1613,7 +1840,7 @@ const weeklyReportsRouter = router({
       const summary = await db.getDashboardSummary(startTime, endTime);
       const heatmap = await db.getHeatmapData(startTime, endTime);
       const topCited = await db.getTopCitedUrls(20, startTime, endTime);
-      const alertsList = await db.listAlerts({ limit: 50 });
+      const alertsList = await db.listAlerts({ startTime, endTime, limit: 50 });
 
       const reportPeriod = `${startDate.toISOString().split("T")[0]} ~ ${endDate.toISOString().split("T")[0]}`;
 
@@ -1706,6 +1933,7 @@ const schedulerState = {
   nextRunAt: null as number | null,
   concurrency: 5,
   job: null as any,
+  running: false,
 };
 
 async function initScheduler() {
@@ -1724,6 +1952,15 @@ async function initScheduler() {
   try {
     const cron = await import("node-cron");
     const task = cron.schedule(schedulerState.cronExpression, async () => {
+      if (schedulerState.running) {
+        log.warn("Scheduled collection skipped: previous run still in progress");
+        return;
+      }
+      if (isShuttingDown()) {
+        log.warn("Scheduled collection skipped: server shutting down");
+        return;
+      }
+      schedulerState.running = true;
       log.info("Scheduled collection triggered");
       schedulerState.lastRunAt = Date.now();
       db.upsertSchedulerConfig({ lastRunAt: schedulerState.lastRunAt }).catch(() => {});
@@ -1761,6 +1998,8 @@ async function initScheduler() {
         await runBatchConcurrently(tasks, batchId, schedulerState.concurrency);
       } catch (error: any) {
         log.error(`Scheduled collection failed: ${error.message}`);
+      } finally {
+        schedulerState.running = false;
       }
     }, {
       timezone: "Asia/Shanghai",
@@ -1935,3 +2174,11 @@ export const appRouter = router({
 });
 
 export type AppRouter = typeof appRouter;
+
+// Internal helpers exposed for unit testing only — not part of the tRPC surface.
+export const __testing = {
+  resolveApiConfigChain,
+  callExternalLLM,
+  isRetryableError,
+  BAI_ENABLED,
+};

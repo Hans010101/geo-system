@@ -69,7 +69,7 @@ export const collections = mysqlTable("collections", {
   responseLength: int("responseLength").default(0),
   hasSearch: boolean("hasSearch").default(false),
   modelVersion: varchar("modelVersion", { length: 64 }),
-  status: mysqlEnum("status", ["success", "failed", "refused", "timeout", "pending"])
+  status: mysqlEnum("status", ["success", "failed", "refused", "timeout", "pending", "cancelled"])
     .default("pending")
     .notNull(),
   errorMessage: text("errorMessage"),

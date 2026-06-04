@@ -4,7 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerAuthRoutes } from "../auth";
-import { appRouter } from "../routers";
+import { appRouter, beginShutdown, cleanupStaleCollections } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./static";
 
@@ -28,6 +28,19 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Session cookies are HS256-signed with JWT_SECRET. An empty secret means anyone can forge
+  // a session for any user (incl. admin). Refuse to boot in production; loudly warn elsewhere.
+  if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "JWT_SECRET must be set in production — an empty signing key allows session forgery."
+      );
+    }
+    console.warn(
+      "[security] JWT_SECRET is not set; sessions are signed with an empty key. Set JWT_SECRET before deploying."
+    );
+  }
+
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -61,6 +74,32 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  // Periodically fail collections abandoned in "pending" (e.g. by a previous crash) so they
+  // don't linger forever and they show up in health stats.
+  const staleTimer = setInterval(() => {
+    cleanupStaleCollections().catch(() => {});
+  }, 5 * 60 * 1000);
+  staleTimer.unref?.();
+
+  // Graceful shutdown: stop accepting new connections and stop starting new collection work,
+  // letting in-flight requests drain before exit.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    beginShutdown();
+    clearInterval(staleTimer);
+    server.close(() => {
+      console.log("HTTP server closed, exiting.");
+      process.exit(0);
+    });
+    // Hard cap so a hung connection can't block termination forever.
+    setTimeout(() => process.exit(0), 15000).unref?.();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 startServer().catch(console.error);

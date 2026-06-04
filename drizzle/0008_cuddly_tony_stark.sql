@@ -1,0 +1,1 @@
+ALTER TABLE `collections` MODIFY COLUMN `status` enum('success','failed','refused','timeout','pending','cancelled') NOT NULL DEFAULT 'pending';

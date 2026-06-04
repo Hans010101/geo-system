@@ -199,6 +199,24 @@ export async function deleteQuestion(questionId: string) {
 }
 
 // ==================== Collections Helpers ====================
+// Column set excluding the large responseText / rawResponse blobs — used by list views
+// that never render the full answer (the detail sheet fetches the full row separately).
+const collectionListColumns = {
+  id: collections.id,
+  questionId: collections.questionId,
+  questionText: collections.questionText,
+  platform: collections.platform,
+  language: collections.language,
+  timestamp: collections.timestamp,
+  responseLength: collections.responseLength,
+  hasSearch: collections.hasSearch,
+  modelVersion: collections.modelVersion,
+  status: collections.status,
+  errorMessage: collections.errorMessage,
+  batchId: collections.batchId,
+  createdAt: collections.createdAt,
+};
+
 export async function listCollections(filters?: {
   questionId?: string;
   platform?: string;
@@ -208,6 +226,9 @@ export async function listCollections(filters?: {
   endTime?: number;
   limit?: number;
   offset?: number;
+  /** Include the large responseText/rawResponse blobs. Defaults to true for backward compat;
+   *  list views should pass false to avoid transferring MB-scale text per row. */
+  includeResponseText?: boolean;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
@@ -220,11 +241,12 @@ export async function listCollections(filters?: {
   if (filters?.endTime) conditions.push(lte(collections.timestamp, filters.endTime));
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const includeFull = filters?.includeResponseText !== false;
 
   const [data, totalResult] = await Promise.all([
-    db
-      .select()
-      .from(collections)
+    (includeFull
+      ? db.select().from(collections)
+      : db.select(collectionListColumns).from(collections))
       .where(whereClause)
       .orderBy(desc(collections.timestamp))
       .limit(filters?.limit || 50)
@@ -372,27 +394,24 @@ export async function getSentimentTrend(questionId: string, platform?: string) {
   if (platform) conditions.push(eq(collections.platform, platform as any));
   conditions.push(eq(collections.status, "success"));
 
-  const collectionList = await db
-    .select({ id: collections.id, timestamp: collections.timestamp, platform: collections.platform })
+  // Single LEFT JOIN instead of fetching collections then a second inArray query.
+  const rows = await db
+    .select({
+      timestamp: collections.timestamp,
+      platform: collections.platform,
+      sentimentScore: analyses.sentimentScore,
+      overallTone: analyses.overallTone,
+    })
     .from(collections)
+    .leftJoin(analyses, eq(analyses.collectionId, collections.id))
     .where(and(...conditions))
     .orderBy(asc(collections.timestamp));
 
-  if (collectionList.length === 0) return [];
-
-  const collectionIds = collectionList.map((c) => c.id);
-  const analysisList = await db
-    .select()
-    .from(analyses)
-    .where(inArray(analyses.collectionId, collectionIds));
-
-  const analysisMap = new Map(analysisList.map((a) => [a.collectionId, a]));
-
-  return collectionList.map((c) => ({
-    timestamp: c.timestamp,
-    platform: c.platform,
-    sentimentScore: analysisMap.get(c.id)?.sentimentScore || null,
-    overallTone: analysisMap.get(c.id)?.overallTone || null,
+  return rows.map((r) => ({
+    timestamp: r.timestamp,
+    platform: r.platform,
+    sentimentScore: r.sentimentScore ?? null,
+    overallTone: r.overallTone ?? null,
   }));
 }
 
@@ -614,12 +633,14 @@ export async function deleteTargetFact(id: number) {
 }
 
 // ==================== Alerts Helpers ====================
-export async function listAlerts(filters?: { severity?: string; isRead?: boolean; limit?: number; offset?: number }) {
+export async function listAlerts(filters?: { severity?: string; isRead?: boolean; startTime?: number; endTime?: number; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
   const conditions = [];
   if (filters?.severity) conditions.push(eq(alerts.severity, filters.severity as any));
   if (filters?.isRead !== undefined) conditions.push(eq(alerts.isRead, filters.isRead));
+  if (filters?.startTime) conditions.push(gte(alerts.createdAt, new Date(filters.startTime)));
+  if (filters?.endTime) conditions.push(lte(alerts.createdAt, new Date(filters.endTime)));
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [data, totalResult] = await Promise.all([
@@ -832,43 +853,94 @@ export async function getHeatmapData(startTime?: number, endTime?: number) {
   if (startTime) conditions.push(gte(collections.timestamp, startTime));
   if (endTime) conditions.push(lte(collections.timestamp, endTime));
 
-  const collectionList = await db
+  // Aggregate in SQL (GROUP BY + AVG) instead of pulling every row and averaging in JS.
+  const rows = await db
     .select({
-      id: collections.id,
       questionId: collections.questionId,
       platform: collections.platform,
+      avgScore: sql<number | string>`AVG(${analyses.sentimentScore})`,
     })
     .from(collections)
-    .where(and(...conditions));
+    .innerJoin(analyses, eq(analyses.collectionId, collections.id))
+    .where(and(...conditions))
+    .groupBy(collections.questionId, collections.platform);
 
-  if (collectionList.length === 0) return [];
+  return rows
+    .filter((r) => r.avgScore != null)
+    .map((r) => ({
+      questionId: r.questionId,
+      platform: r.platform,
+      avgScore: Math.round(Number(r.avgScore) * 10) / 10,
+    }));
+}
 
-  const collectionIds = collectionList.map((c) => c.id);
-  const analysisList = await db
-    .select({ collectionId: analyses.collectionId, sentimentScore: analyses.sentimentScore })
-    .from(analyses)
-    .where(inArray(analyses.collectionId, collectionIds));
+// ==================== Collection Health / Error-rate Helper ====================
+// Aggregated collection health for the dashboard + failure-rate alerting. All work is done
+// in SQL. `sinceMs` is an epoch-ms lower bound on collections.timestamp.
+export async function getCollectionHealthStats(sinceMs: number) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      total: 0, success: 0, failed: 0, pending: 0, other: 0, successRate: 1,
+      perPlatform: [] as { platform: string; total: number; success: number; failed: number; successRate: number }[],
+      topErrors: [] as { errorMessage: string; count: number }[],
+      successMissingAnalysis: 0,
+    };
+  }
 
-  const analysisMap = new Map(analysisList.map((a) => [a.collectionId, a.sentimentScore]));
+  const since = gte(collections.timestamp, sinceMs);
+  const isFailed = sql`${collections.status} IN ('failed','refused','timeout')`;
 
-  // Group by questionId + platform
-  const heatmap: Record<string, Record<string, number[]>> = {};
-  collectionList.forEach((c) => {
-    if (!heatmap[c.questionId]) heatmap[c.questionId] = {};
-    if (!heatmap[c.questionId][c.platform]) heatmap[c.questionId][c.platform] = [];
-    const score = analysisMap.get(c.id);
-    if (score) heatmap[c.questionId][c.platform].push(score);
+  // Overall + per-platform counts in one grouped pass.
+  const perPlatformRows = await db
+    .select({
+      platform: collections.platform,
+      total: count(),
+      success: sql<number>`SUM(CASE WHEN ${collections.status} = 'success' THEN 1 ELSE 0 END)`,
+      failed: sql<number>`SUM(CASE WHEN ${collections.status} IN ('failed','refused','timeout') THEN 1 ELSE 0 END)`,
+      pending: sql<number>`SUM(CASE WHEN ${collections.status} = 'pending' THEN 1 ELSE 0 END)`,
+    })
+    .from(collections)
+    .where(since)
+    .groupBy(collections.platform);
+
+  let total = 0, success = 0, failed = 0, pending = 0;
+  const perPlatform = perPlatformRows.map((r) => {
+    const t = Number(r.total), s = Number(r.success), f = Number(r.failed), p = Number(r.pending);
+    total += t; success += s; failed += f; pending += p;
+    const settled = s + f;
+    return { platform: r.platform, total: t, success: s, failed: f, successRate: settled > 0 ? s / settled : 1 };
   });
+  const other = total - success - failed - pending;
+  const settledTotal = success + failed;
 
-  const result: { questionId: string; platform: string; avgScore: number }[] = [];
-  Object.entries(heatmap).forEach(([qid, platforms]) => {
-    Object.entries(platforms).forEach(([platform, scores]) => {
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-      result.push({ questionId: qid, platform, avgScore: Math.round(avg * 10) / 10 });
-    });
-  });
+  // Top error messages among failures.
+  const topErrorRows = await db
+    .select({ errorMessage: collections.errorMessage, count: count() })
+    .from(collections)
+    .where(and(since, isFailed, sql`${collections.errorMessage} IS NOT NULL`))
+    .groupBy(collections.errorMessage)
+    .orderBy(desc(count()))
+    .limit(5);
 
-  return result;
+  // Successful collections that never got an analysis row (silent analysis failures).
+  const missingRows = await db
+    .select({ c: count() })
+    .from(collections)
+    .leftJoin(analyses, eq(analyses.collectionId, collections.id))
+    .where(and(since, eq(collections.status, "success"), sql`${analyses.id} IS NULL`));
+
+  return {
+    total,
+    success,
+    failed,
+    pending,
+    other,
+    successRate: settledTotal > 0 ? success / settledTotal : 1,
+    perPlatform: perPlatform.sort((a, b) => b.failed - a.failed),
+    topErrors: topErrorRows.map((r) => ({ errorMessage: r.errorMessage || "(unknown)", count: Number(r.count) })),
+    successMissingAnalysis: Number(missingRows[0]?.c || 0),
+  };
 }
 
 // ==================== Uncited Our Content Helper ====================
