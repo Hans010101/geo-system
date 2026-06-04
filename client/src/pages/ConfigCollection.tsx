@@ -79,7 +79,7 @@ function useBatchPoller() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ json: { batchId: id, concurrency: 5 } }),
+          body: JSON.stringify({ json: { batchId: id, concurrency: 8 } }),
         });
         const json = await res.json();
         const result = json?.result?.data?.json || json?.result?.data || {};

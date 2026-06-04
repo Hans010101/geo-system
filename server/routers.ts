@@ -78,8 +78,8 @@ export function isShuttingDown() { return shuttingDown; }
 // ==================== Global Outbound LLM Rate Limiter ====================
 // Caps concurrent outbound LLM requests and enforces a minimum spacing between launches, so
 // overlapping batches (plus analysis/citation calls) can't stampede a provider into 429s.
-const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 4);
-const LLM_MIN_INTERVAL_MS = Number(process.env.LLM_MIN_INTERVAL_MS || 250);
+const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 8);
+const LLM_MIN_INTERVAL_MS = Number(process.env.LLM_MIN_INTERVAL_MS || 0);
 let llmActive = 0;
 let llmLastStart = 0;
 const llmWaiters: (() => void)[] = [];
@@ -405,7 +405,7 @@ async function callExternalLLM(
   }
 
   const maxRetriesPerCandidate = Number(process.env.LLM_MAX_RETRIES || 3);
-  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 60000);
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
   let lastError: any;
 
   for (let ci = 0; ci < candidates.length; ci++) {
@@ -500,10 +500,35 @@ async function callExternalLLM(
 }
 
 // ==================== Collection Execution (P0-1: No more simulation) ====================
+// Secondary pipeline (citations + analysis + alerts). Independent of "did we get an answer",
+// so the batch path can run it off the critical path. Swallows its own errors.
+async function runPostProcessing(
+  collectionId: number,
+  question: { questionId: string; text: string; language: string },
+  responseText: string,
+  platform: string,
+  traceId: string
+): Promise<void> {
+  try {
+    if (await isCancelledNow(collectionId)) return;
+    // Citation extraction + AI analysis write different tables → run concurrently.
+    await Promise.all([
+      extractCitations(collectionId, responseText, traceId),
+      analyzeCollection(collectionId, question.text, responseText, traceId),
+    ]);
+    if (!isCancelled(collectionId)) {
+      await checkAlerts(collectionId, question, platform, traceId);
+    }
+  } catch (e: any) {
+    log.warn(`Post-processing failed for collection ${collectionId}: ${e.message}`, { traceId });
+  }
+}
+
 async function executeCollection(
   collectionId: number,
   question: { questionId: string; text: string; language: string },
-  platform: string
+  platform: string,
+  opts?: { deferPostProcessing?: boolean }
 ): Promise<{ success: boolean; error?: string }> {
   const traceId = `col-${collectionId}-${nanoid(6)}`;
 
@@ -554,22 +579,17 @@ async function executeCollection(
       status: "success",
     });
 
-    // Citation extraction + AI analysis are independent (different tables) — run concurrently
-    // instead of serially to cut per-item wall time. Both swallow their own errors, so this
-    // never rejects. Outbound LLM concurrency is still bounded by withLlmRateLimit.
-    if (!isCancelled(collectionId)) {
-      await Promise.all([
-        extractCitations(collectionId, responseText, traceId),
-        analyzeCollection(collectionId, question.text, responseText, traceId),
-      ]);
+    // The answer is in and the record is marked success. In batch mode we run the secondary
+    // pipeline (citations/analysis/alerts) off the critical path so the batch round returns as
+    // soon as answers are collected (~3x faster rounds); it's still bounded by withLlmRateLimit.
+    // Manual single-collection keeps it inline so the caller gets a fully-processed result.
+    if (opts?.deferPostProcessing) {
+      void runPostProcessing(collectionId, question, responseText, platform, traceId);
+    } else {
+      await runPostProcessing(collectionId, question, responseText, platform, traceId);
     }
 
-    // Alert checking (depends on the analysis row written above)
-    if (!isCancelled(collectionId)) {
-      await checkAlerts(collectionId, question, platform, traceId);
-    }
-
-    log.info(`Collection ${collectionId} completed successfully`, {
+    log.info(`Collection ${collectionId} answer collected${opts?.deferPostProcessing ? " (analysis deferred)" : ""}`, {
       traceId, platform, apiSource, modelVersion, responseLength: responseText.length,
     });
 
@@ -874,7 +894,8 @@ async function runBatchConcurrently(
             text: task.question.text,
             language: task.question.language,
           },
-          task.platform
+          task.platform,
+          { deferPostProcessing: true }
         );
       })
     )
@@ -1134,7 +1155,7 @@ const collectionsRouter = router({
   executeNextBatch: adminProcedure
     .input(z.object({
       batchId: z.string(),
-      concurrency: z.number().min(1).max(10).optional(),
+      concurrency: z.number().min(1).max(20).optional(),
     }))
     .mutation(async ({ input }) => {
       const concurrency = input.concurrency || 5;
@@ -1166,7 +1187,8 @@ const collectionsRouter = router({
           return executeCollection(
             col.id,
             { questionId: question.questionId, text: question.text, language: question.language },
-            col.platform
+            col.platform,
+            { deferPostProcessing: true }
           );
         })
       );
