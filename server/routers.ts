@@ -221,8 +221,9 @@ async function resolveApiConfig(platform: string): Promise<{
 function resolveAnalysisModel(baseUrl: string): string {
   if (baseUrl.includes("b.ai")) return "gemini-3-flash";
   if (baseUrl.includes("dashscope") || baseUrl.includes("aliyun")) return "qwen-turbo";
-  if (baseUrl.includes("openrouter")) return "google/gemini-2.0-flash-001";
-  return "google/gemini-2.0-flash-001";
+  // gemini-2.0-flash-001 was retired from OpenRouter; use gemini-2.5-flash for analysis
+  if (baseUrl.includes("openrouter")) return "google/gemini-2.5-flash";
+  return "google/gemini-2.5-flash";
 }
 
 // For analysis/citation extraction we also respect the primary-provider switch.

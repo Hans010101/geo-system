@@ -58,8 +58,11 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
 export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   chatgpt: "openai/gpt-4o",
   perplexity: "perplexity/sonar-pro",
-  gemini: "google/gemini-2.0-flash-001",
-  wenxin: "baidu/ernie-4.5-300b-a47b",
+  // gemini-2.0-flash-001 was retired from OpenRouter; gemini-2.5-flash is the current stable replacement
+  gemini: "google/gemini-2.5-flash",
+  // baidu/ernie-4.5-300b-a47b was delisted; only vision-language variants remain on OpenRouter
+  // 424b is the larger/more-capable variant comparable to the prior 300b
+  wenxin: "baidu/ernie-4.5-vl-424b-a47b",
   claude: "anthropic/claude-sonnet-4",
   copilot: "openai/gpt-4o",
   doubao: "bytedance-seed/seed-2.0-lite",
@@ -68,7 +71,8 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   minimax: "minimax/minimax-m2.5",
   tongyi: "qwen/qwen-plus",
   zhipu: "z-ai/glm-4.7",
-  grok: "x-ai/grok-3",
+  // Grok 3 deprecated per xAI notice; Grok 4.20 is the current stable non-multi-agent revision
+  grok: "x-ai/grok-4.20",
   llama: "meta-llama/llama-4-maverick",
   hunyuan: "tencent/hunyuan-a13b-instruct",
 };
