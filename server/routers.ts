@@ -404,8 +404,8 @@ async function callExternalLLM(
     throw new Error(`该平台 (${platform}) 未配置 API Key，请在「平台配置」或「全局 API 配置」中设置`);
   }
 
-  const maxRetriesPerCandidate = 3;
-  const timeoutMs = 60000;
+  const maxRetriesPerCandidate = Number(process.env.LLM_MAX_RETRIES || 3);
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 60000);
   let lastError: any;
 
   for (let ci = 0; ci < candidates.length; ci++) {
@@ -554,17 +554,17 @@ async function executeCollection(
       status: "success",
     });
 
-    // Citation extraction (enhanced)
+    // Citation extraction + AI analysis are independent (different tables) — run concurrently
+    // instead of serially to cut per-item wall time. Both swallow their own errors, so this
+    // never rejects. Outbound LLM concurrency is still bounded by withLlmRateLimit.
     if (!isCancelled(collectionId)) {
-      await extractCitations(collectionId, responseText, traceId);
+      await Promise.all([
+        extractCitations(collectionId, responseText, traceId),
+        analyzeCollection(collectionId, question.text, responseText, traceId),
+      ]);
     }
 
-    // AI analysis
-    if (!isCancelled(collectionId)) {
-      await analyzeCollection(collectionId, question.text, responseText, traceId);
-    }
-
-    // Alert checking
+    // Alert checking (depends on the analysis row written above)
     if (!isCancelled(collectionId)) {
       await checkAlerts(collectionId, question, platform, traceId);
     }
