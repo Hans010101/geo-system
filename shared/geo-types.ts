@@ -65,7 +65,8 @@ export const PLATFORM_OPENROUTER_MODELS: Record<Platform, string> = {
   wenxin: "baidu/ernie-4.5-vl-424b-a47b",
   claude: "anthropic/claude-sonnet-4",
   copilot: "openai/gpt-4o",
-  doubao: "bytedance-seed/seed-2.0-lite",
+  // seed-2.0-lite was ~150s/cell; seed-1.6-flash benchmarks 6.6× faster (23s) with longer + cheaper output
+  doubao: "bytedance-seed/seed-1.6-flash",
   kimi: "moonshotai/kimi-k2",
   deepseek: "deepseek/deepseek-chat-v3-0324",
   minimax: "minimax/minimax-m2.5",

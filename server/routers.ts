@@ -267,16 +267,19 @@ async function callExternalLLM(
   }
 
   const maxRetries = 3;
-  const timeoutMs = 60000;
+  // Bumped from 60s → 200s so it covers slow-generating long-tail platforms (zhipu max 185s observed).
+  // Previously the AbortController was canceled right after `fetch()` resolved headers, so body
+  // streaming was effectively unbounded — masking the real per-call duration. Now timer is cleared
+  // only after the full body is consumed, so the deadline covers the entire request.
+  const timeoutMs = 200000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       log.info(`Calling external API for ${platform} (attempt ${attempt}/${maxRetries})`, {
         traceId, source: config.source, model: config.model,
       });
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       // OpenRouter likes HTTP-Referer + X-Title for attribution; BAI / 百炼 don't.
       const isOpenRouter = config.baseUrl.includes("openrouter.ai");
@@ -299,10 +302,9 @@ async function callExternalLLM(
         signal: controller.signal,
       });
 
-      clearTimeout(timer);
-
       if (!response.ok) {
         const errText = await response.text();
+        clearTimeout(timer);
         // Detect model-not-found errors and give a helpful message
         if (errText.includes("not a valid model") || errText.includes("model_not_found") || errText.includes("does not exist")) {
           const rec = PLATFORM_RECOMMENDED_PROVIDER[platform as Platform];
@@ -313,6 +315,8 @@ async function callExternalLLM(
       }
 
       const data = await response.json();
+      // Clear timer only after body fully consumed — guarantees timeoutMs covers the entire request
+      clearTimeout(timer);
       const content = data.choices?.[0]?.message?.content || "";
 
       log.info(`External API success for ${platform}`, {
@@ -325,6 +329,7 @@ async function callExternalLLM(
         source: config.source,
       };
     } catch (error: any) {
+      clearTimeout(timer);
       log.warn(`External API attempt ${attempt} failed for ${platform}: ${error.message}`, { traceId });
       if (attempt === maxRetries) {
         throw error;
@@ -685,40 +690,46 @@ ${targetFactKeys.map((k) => `    "${k}": <true|false>`).join(",\n")}
 }
 
 // ==================== Concurrent Batch Engine (P0-2) ====================
-async function runBatchConcurrently(
-  tasks: { collectionId: number; question: any; platform: string }[],
-  batchId: string,
-  concurrency: number = 5
-) {
-  // Dynamic import p-limit (ESM module)
+// Streaming concurrent execution: keeps `concurrency` slots full, a slow cell never blocks others.
+// Used by both runBatchConcurrently (scheduler) and executeNextBatch (frontend poll).
+async function runCollectionsConcurrently(
+  tasks: { collectionId: number; question: { questionId: string; text: string; language: string }; platform: string }[],
+  concurrency: number
+): Promise<{ completed: number; failed: number }> {
   const pLimit = (await import("p-limit")).default;
   const limit = pLimit(concurrency);
 
-  log.info(`Starting batch ${batchId}: ${tasks.length} tasks, concurrency=${concurrency}`);
-
   const results = await Promise.allSettled(
     tasks.map((task) =>
-      limit(async () => {
-        return executeCollection(
-          task.collectionId,
-          {
-            questionId: task.question.questionId,
-            text: task.question.text,
-            language: task.question.language,
-          },
-          task.platform
-        );
-      })
+      limit(async () => executeCollection(task.collectionId, task.question, task.platform))
     )
   );
 
   let completed = 0;
   let failed = 0;
-  results.forEach((r) => {
+  for (const r of results) {
     if (r.status === "fulfilled" && r.value.success) completed++;
     else failed++;
-  });
+  }
+  return { completed, failed };
+}
 
+async function runBatchConcurrently(
+  tasks: { collectionId: number; question: any; platform: string }[],
+  batchId: string,
+  concurrency: number = 5
+) {
+  log.info(`Starting batch ${batchId}: ${tasks.length} tasks, concurrency=${concurrency}`);
+  const normalized = tasks.map((t) => ({
+    collectionId: t.collectionId,
+    question: {
+      questionId: t.question.questionId,
+      text: t.question.text,
+      language: t.question.language,
+    },
+    platform: t.platform,
+  }));
+  const { completed, failed } = await runCollectionsConcurrently(normalized, concurrency);
   log.info(`Batch ${batchId} finished: ${completed} success, ${failed} failed out of ${tasks.length}`);
 }
 
@@ -961,6 +972,10 @@ const collectionsRouter = router({
     }),
 
   // Execute next batch of pending items — called by frontend polling
+  // Streaming concurrent execution: prefetch up to concurrency*3 pending rows (capped at 15) and
+  // process via p-limit pool so a slow cell never blocks faster ones in the same round.
+  // Per-round duration is bounded by Cloud Run 5min timeout; un-finished rows stay 'pending' and
+  // get retried by the next poll round, so increasing the prefetch is safe.
   executeNextBatch: adminProcedure
     .input(z.object({
       batchId: z.string(),
@@ -968,13 +983,16 @@ const collectionsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const concurrency = input.concurrency || 5;
+      // Prefetch more than concurrency so the p-limit pool stays full as cells complete.
+      // Capped at 15 to stay well under Cloud Run 5min limit even if many cells hit the 200s timeout.
+      const prefetch = Math.min(concurrency * 3, 15);
       const progress = await db.getBatchProgress(input.batchId);
 
       // Get pending collections for this batch
       const pendingResult = await db.listCollections({
         batchId: input.batchId,
         status: "pending",
-        limit: concurrency,
+        limit: prefetch,
         offset: 0,
       });
       const pending = pendingResult.data;
@@ -983,28 +1001,27 @@ const collectionsRouter = router({
         return { completed: 0, failed: 0, remaining: 0, total: progress.total };
       }
 
-      // Execute synchronously (await) — not fire-and-forget
-      let completed = 0;
+      // Resolve questions for each pending row up front; mark as failed any with missing question
+      const tasks: { collectionId: number; question: { questionId: string; text: string; language: string }; platform: string }[] = [];
       let failed = 0;
-      const results = await Promise.allSettled(
-        pending.map(async (col) => {
-          const question = await db.getQuestionById(col.questionId);
-          if (!question) {
-            await db.updateCollection(col.id, { status: "failed", errorMessage: "Question not found" });
-            return { success: false };
-          }
-          return executeCollection(
-            col.id,
-            { questionId: question.questionId, text: question.text, language: question.language },
-            col.platform
-          );
-        })
-      );
+      for (const col of pending) {
+        const question = await db.getQuestionById(col.questionId);
+        if (!question) {
+          await db.updateCollection(col.id, { status: "failed", errorMessage: "Question not found" });
+          failed++;
+          continue;
+        }
+        tasks.push({
+          collectionId: col.id,
+          question: { questionId: question.questionId, text: question.text, language: question.language },
+          platform: col.platform,
+        });
+      }
 
-      results.forEach((r) => {
-        if (r.status === "fulfilled" && r.value.success) completed++;
-        else failed++;
-      });
+      // Streaming concurrent execution (shared helper)
+      const result = await runCollectionsConcurrently(tasks, concurrency);
+      const completed = result.completed;
+      failed += result.failed;
 
       // Recount remaining
       const updatedProgress = await db.getBatchProgress(input.batchId);
