@@ -33,7 +33,10 @@ export const questions = mysqlTable("questions", {
   id: int("id").autoincrement().primaryKey(),
   questionId: varchar("questionId", { length: 32 }).notNull().unique(),
   text: text("text").notNull(),
-  brandLine: mysqlEnum("brandLine", ["sun_yuchen", "tron", "competitor"]).notNull(),
+  brandLine: mysqlEnum("brandLine", [
+    "sun_yuchen", "tron", "competitor",  // legacy lines (archived questions)
+    "syc_emo", "tron_emo", "tron_rec", "syc_rec",  // v3 lines: 情绪类 / 推荐类
+  ]).notNull(),
   dimension: mysqlEnum("dimension", [
     "awareness",
     "evaluation",
@@ -45,6 +48,8 @@ export const questions = mysqlTable("questions", {
     "wealth",
     "industry_status",
   ]).notNull(),
+  // Free-form 2nd-axis tag for v3 question bank (覆盖维度). Optional, supplements `dimension`.
+  coverageDimension: varchar("coverageDimension", { length: 64 }),
   language: mysqlEnum("language", ["zh-CN", "en-US"]).notNull(),
   status: mysqlEnum("status", ["active", "paused", "dynamic", "archived"]).default("active").notNull(),
   validFrom: timestamp("validFrom"),

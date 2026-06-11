@@ -128,13 +128,21 @@ export const BAI_BASE_URL = "https://api.b.ai/v1";
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 // Brand line types
-export const BRAND_LINES = ["sun_yuchen", "tron", "competitor"] as const;
+// Legacy v2 lines (sun_yuchen / tron / competitor) kept for archived rows; v3 adds 4 new lines.
+export const BRAND_LINES = [
+  "sun_yuchen", "tron", "competitor",
+  "syc_emo", "tron_emo", "tron_rec", "syc_rec",
+] as const;
 export type BrandLine = (typeof BRAND_LINES)[number];
 
 export const BRAND_LINE_LABELS: Record<BrandLine, string> = {
   sun_yuchen: "孙宇晨IP线",
   tron: "波场TRON线",
   competitor: "竞品对标",
+  syc_emo: "孙宇晨情绪类",
+  tron_emo: "波场情绪类",
+  tron_rec: "波场推荐类",
+  syc_rec: "孙宇晨推荐类",
 };
 
 // Dimension types
