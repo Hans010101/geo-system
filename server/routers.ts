@@ -7,6 +7,7 @@ import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
 import { nanoid } from "nanoid";
 import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_BAI_MODELS, BAI_SUPPORTED_PLATFORMS, BAI_BASE_URL, OPENROUTER_BASE_URL, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform, type LLMProvider } from "@shared/geo-types";
+import { calcCostUsd, detectProviderFromBaseUrl } from "@shared/llm-pricing";
 import { ENV } from "./_core/env";
 import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
@@ -255,11 +256,31 @@ async function getAnyActiveApiKey(): Promise<{ apiKey: string; baseUrl: string; 
 }
 
 // ==================== External LLM Call ====================
+// H1 (2026-06): now returns full telemetry (model, realModel, latency, usage, cost, rawResponse, provider).
+// Callers (executeCollection) persist these to collections.* for downstream cost/perf analysis.
+export type LLMCallTelemetry = {
+  content: string;
+  /** Model we asked for (config.model — resolved from PLATFORM_OPENROUTER_MODELS constants) */
+  model: string;
+  /** Model the API actually used (data.model — may rewrite to a routed variant on OpenRouter) */
+  realModel: string;
+  /** 'platform' | 'global' | 'env' — where the apiKey came from */
+  source: string;
+  /** 'openrouter' | 'bai' | 'bailian' | 'other' */
+  provider: "openrouter" | "bai" | "bailian" | "other";
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  latencyMs: number;
+  costUsd: number | null;
+  rawResponse: any;
+};
+
 async function callExternalLLM(
   platform: string,
   messages: { role: string; content: string }[],
   traceId: string
-): Promise<{ content: string; model: string; source: string }> {
+): Promise<LLMCallTelemetry> {
   const config = await resolveApiConfig(platform);
 
   if (!config.apiKey || !config.baseUrl || config.source === "none") {
@@ -273,9 +294,12 @@ async function callExternalLLM(
   // only after the full body is consumed, so the deadline covers the entire request.
   const timeoutMs = 200000;
 
+  const provider = detectProviderFromBaseUrl(config.baseUrl);
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const t0 = Date.now();
     try {
       log.info(`Calling external API for ${platform} (attempt ${attempt}/${maxRetries})`, {
         traceId, source: config.source, model: config.model,
@@ -317,16 +341,33 @@ async function callExternalLLM(
       const data = await response.json();
       // Clear timer only after body fully consumed — guarantees timeoutMs covers the entire request
       clearTimeout(timer);
+      const latencyMs = Date.now() - t0;
       const content = data.choices?.[0]?.message?.content || "";
 
+      const promptTokens = data.usage?.prompt_tokens ?? null;
+      const completionTokens = data.usage?.completion_tokens ?? null;
+      const totalTokens = data.usage?.total_tokens ?? (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+      // Cost on OpenRouter is computed from the price table (input/output per-token). We charge on `config.model`
+      // (what we requested) so the math matches OPENROUTER_PRICING; data.model may rewrite to a routed variant.
+      const costUsd = provider === "openrouter" ? calcCostUsd(config.model, promptTokens, completionTokens) : null;
+
       log.info(`External API success for ${platform}`, {
-        traceId, model: data.model || config.model, contentLength: content.length,
+        traceId, model: data.model || config.model, contentLength: content.length, latencyMs,
+        promptTokens, completionTokens, costUsd,
       });
 
       return {
         content,
-        model: data.model || config.model,
+        model: config.model,
+        realModel: data.model || config.model,
         source: config.source,
+        provider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        latencyMs,
+        costUsd,
+        rawResponse: data,
       };
     } catch (error: any) {
       clearTimeout(timer);
@@ -366,7 +407,7 @@ async function executeCollection(
 
     log.info(`Starting collection for Q:${question.questionId} on ${platform}`, { traceId });
 
-    const { content: responseText, model: rawModel, source: apiSource } = await callExternalLLM(
+    const telemetry = await callExternalLLM(
       platform,
       [
         { role: "system", content: systemPrompt },
@@ -374,14 +415,19 @@ async function executeCollection(
       ],
       traceId
     );
+    const responseText = telemetry.content;
+    const apiSource = telemetry.source;
 
     if (isCancelled(collectionId)) {
       log.info(`Collection ${collectionId} cancelled after LLM call`, { traceId });
       return { success: false, error: "cancelled" };
     }
 
-    const platformConfig = await db.getPlatformConfig(platform);
-    const modelVersion = platformConfig?.modelVersion || PLATFORM_OPENROUTER_MODELS[platform as Platform] || rawModel;
+    // H1-b (2026-06): modelVersion is the model we ACTUALLY requested (telemetry.model = config.model
+    // resolved from constants). Ignore the platformConfigs.modelVersion override which was full of
+    // stale/incorrect values from past UI edits. The override would only re-enter the picture for
+    // platforms with their own dedicated API key (resolveApiConfig path 1, already handled there).
+    const modelVersion = telemetry.model;
 
     await db.updateCollection(collectionId, {
       responseText,
@@ -389,6 +435,15 @@ async function executeCollection(
       hasSearch: true,
       modelVersion,
       status: "success",
+      // H1 telemetry (provider/realModel/tokens/latency/cost/rawResponse)
+      provider: telemetry.provider,
+      realModel: telemetry.realModel,
+      promptTokens: telemetry.promptTokens,
+      completionTokens: telemetry.completionTokens,
+      totalTokens: telemetry.totalTokens,
+      latencyMs: telemetry.latencyMs,
+      costUsd: telemetry.costUsd != null ? String(telemetry.costUsd) : null,
+      rawResponse: telemetry.rawResponse,
     });
 
     // Citation extraction (enhanced)
@@ -542,6 +597,14 @@ async function extractCitations(collectionId: number, responseText: string, trac
 }
 
 // ==================== Alert Checking ====================
+// Window during which a same (qid×platform×alertType) won't re-fire (H3 dedup).
+const ALERT_DEDUP_HOURS = 7 * 24;
+
+// H3 (2026-06) — sentiment_drop is now a RELATIVE trigger:
+//   - First-time collection of (qid, platform) has no prior baseline → never fires.
+//   - Subsequent collections fire only when current score < prior score AND current ≤ 2.
+//     (a 4→3 drop or a 3→3 stationary doesn't fire; absolute negative + actual deterioration does.)
+// Combined with the 7-day dedup window this eliminated 77% of historical noise per the May audit.
 async function checkAlerts(
   collectionId: number,
   question: { questionId: string; text: string },
@@ -552,49 +615,72 @@ async function checkAlerts(
     const analysis = await db.getAnalysisByCollectionId(collectionId);
     if (!analysis) return;
 
-    if (analysis.sentimentScore && analysis.sentimentScore <= 2) {
-      const severity = analysis.sentimentScore === 1 ? "critical" : "high";
-      const alertData = {
-        alertType: "sentiment_drop" as const,
-        severity: severity as "critical" | "high",
-        title: `${platform} 对问题 ${question.questionId} 给出负面回答`,
-        description: analysis.sentimentReasoning || `情感评分: ${analysis.sentimentScore}/5`,
-        relatedCollectionId: collectionId,
-        relatedQuestionId: question.questionId,
-        relatedPlatform: platform,
-      };
-      const alertId = await db.createAlert(alertData);
-      log.info(`Alert created: sentiment_drop for ${platform}`, { traceId });
+    // ===== sentiment_drop (H3 relative trigger) =====
+    if (analysis.sentimentScore != null && analysis.sentimentScore <= 2) {
+      const dedupKey = `${question.questionId}:${platform}:sentiment_drop`;
+      const recent = await db.findRecentAlertByDedupKey(dedupKey, ALERT_DEDUP_HOURS);
+      if (recent) {
+        log.info(`Alert skipped (dedup): sentiment_drop for ${platform}:${question.questionId} — last ${recent.createdAt?.toISOString()}`, { traceId });
+      } else {
+        const priorScore = await db.getPriorSentimentScore(question.questionId, platform, collectionId);
+        // First time for this (qid, platform) → no baseline, don't fire (avoids new-question-bank burst)
+        if (priorScore == null) {
+          log.info(`Alert skipped (no prior score): sentiment_drop for ${platform}:${question.questionId} — first-time pair`, { traceId });
+        } else if (analysis.sentimentScore >= priorScore) {
+          log.info(`Alert skipped (no deterioration): sentiment_drop for ${platform}:${question.questionId} — prior=${priorScore} now=${analysis.sentimentScore}`, { traceId });
+        } else {
+          const severity = analysis.sentimentScore === 1 ? "critical" : "high";
+          const alertData = {
+            alertType: "sentiment_drop" as const,
+            severity: severity as "critical" | "high",
+            title: `${platform} 对问题 ${question.questionId} 给出负面回答`,
+            description: `情感评分 ${priorScore} → ${analysis.sentimentScore}：${analysis.sentimentReasoning || ""}`.slice(0, 1000),
+            relatedCollectionId: collectionId,
+            relatedQuestionId: question.questionId,
+            relatedPlatform: platform,
+            dedupKey,
+          };
+          const alertId = await db.createAlert(alertData);
+          log.info(`Alert created: sentiment_drop for ${platform} (prior=${priorScore} now=${analysis.sentimentScore})`, { traceId });
 
-      // Push notification
-      const msg = formatAlertMessage({ ...alertData, severity });
-      dispatchNotification({
-        messageType: "alert", alertId, severity,
-        title: msg.title, content: msg.content,
-        dedupKey: `${question.questionId}:${platform}:sentiment_drop`,
-      }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
+          const msg = formatAlertMessage({ ...alertData, severity });
+          dispatchNotification({
+            messageType: "alert", alertId, severity,
+            title: msg.title, content: msg.content,
+            dedupKey,
+          }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
+        }
+      }
     }
 
+    // ===== fact_missing (still absolute, with 7d dedup) =====
     if (analysis.factualAccuracy === "inaccurate") {
-      const claims = (analysis.inaccurateClaims as string[]) || [];
-      const alertData = {
-        alertType: "fact_missing" as const,
-        severity: "medium" as const,
-        title: `${platform} 对问题 ${question.questionId} 存在事实错误`,
-        description: claims.length > 0 ? `不准确声明: ${claims.join("; ")}` : "检测到事实性错误",
-        relatedCollectionId: collectionId,
-        relatedQuestionId: question.questionId,
-        relatedPlatform: platform,
-      };
-      const alertId = await db.createAlert(alertData);
-      log.info(`Alert created: fact_missing for ${platform}`, { traceId });
+      const dedupKey = `${question.questionId}:${platform}:fact_missing`;
+      const recent = await db.findRecentAlertByDedupKey(dedupKey, ALERT_DEDUP_HOURS);
+      if (recent) {
+        log.info(`Alert skipped (dedup): fact_missing for ${platform}:${question.questionId} — last ${recent.createdAt?.toISOString()}`, { traceId });
+      } else {
+        const claims = (analysis.inaccurateClaims as string[]) || [];
+        const alertData = {
+          alertType: "fact_missing" as const,
+          severity: "medium" as const,
+          title: `${platform} 对问题 ${question.questionId} 存在事实错误`,
+          description: claims.length > 0 ? `不准确声明: ${claims.join("; ")}` : "检测到事实性错误",
+          relatedCollectionId: collectionId,
+          relatedQuestionId: question.questionId,
+          relatedPlatform: platform,
+          dedupKey,
+        };
+        const alertId = await db.createAlert(alertData);
+        log.info(`Alert created: fact_missing for ${platform}`, { traceId });
 
-      const msg = formatAlertMessage({ ...alertData, severity: "medium" });
-      dispatchNotification({
-        messageType: "alert", alertId, severity: "medium",
-        title: msg.title, content: msg.content,
-        dedupKey: `${question.questionId}:${platform}:fact_missing`,
-      }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
+        const msg = formatAlertMessage({ ...alertData, severity: "medium" });
+        dispatchNotification({
+          messageType: "alert", alertId, severity: "medium",
+          title: msg.title, content: msg.content,
+          dedupKey,
+        }).catch(err => log.warn(`Notification dispatch failed: ${err.message}`, { traceId }));
+      }
     }
   } catch (error: any) {
     log.error(`Alert check failed: ${error.message}`, { traceId });
@@ -1160,6 +1246,9 @@ const collectionsRouter = router({
 
       await analyzeCollection(input.id, collection.questionText, collection.responseText, traceId);
       await extractCitations(input.id, collection.responseText, traceId);
+      // H4 (2026-06): match executeCollection behavior — fire checkAlerts after analysis.
+      // The H3 dedup + relative-trigger logic prevents reanalysis bursts from creating noise.
+      await checkAlerts(input.id, { questionId: collection.questionId, text: collection.questionText }, collection.platform, traceId);
 
       return { success: true };
     }),
@@ -1174,9 +1263,15 @@ const collectionsRouter = router({
       const { collections, analyses } = await import("../drizzle/schema");
       const { eq, sql, isNull } = await import("drizzle-orm");
 
-      // Find success collections without analysis
+      // Find success collections without analysis (incl. fields needed to fire checkAlerts after)
       const missing = await database
-        .select({ id: collections.id, questionText: collections.questionText, responseText: collections.responseText })
+        .select({
+          id: collections.id,
+          questionId: collections.questionId,
+          platform: collections.platform,
+          questionText: collections.questionText,
+          responseText: collections.responseText,
+        })
         .from(collections)
         .leftJoin(analyses, eq(analyses.collectionId, collections.id))
         .where(sql`${collections.status} = 'success' AND ${collections.responseText} IS NOT NULL AND ${analyses.id} IS NULL`)
@@ -1194,6 +1289,9 @@ const collectionsRouter = router({
         const traceId = `bulk-analyze-${col.id}-${nanoid(4)}`;
         try {
           await analyzeCollection(col.id, col.questionText, col.responseText!, traceId);
+          // H4 (2026-06): also fire checkAlerts so reanalysis backfill produces the same alerts
+          // executeCollection would have. H3 dedup keeps the burst from creating noise.
+          await checkAlerts(col.id, { questionId: col.questionId, text: col.questionText }, col.platform, traceId);
           analyzed++;
         } catch (err: any) {
           log.error(`Bulk analyze failed for ${col.id}: ${err.message}`, { traceId });
@@ -1409,6 +1507,8 @@ const alertsRouter = router({
       z.object({
         severity: z.string().optional(),
         isRead: z.boolean().optional(),
+        // H2 (2026-06): status filter; defaults to 'active' in db.listAlerts
+        status: z.enum(["active", "resolved", "dismissed"]).optional(),
         limit: z.number().optional(),
         offset: z.number().optional(),
       }).optional()
@@ -1428,6 +1528,21 @@ const alertsRouter = router({
     await db.markAllAlertsRead();
     return { success: true };
   }),
+
+  // H2 (2026-06): explicit workflow transitions
+  resolve: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.setAlertStatus(input.id, "resolved");
+      return { success: true };
+    }),
+
+  dismiss: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.setAlertStatus(input.id, "dismissed");
+      return { success: true };
+    }),
 });
 
 // ==================== Platform Configs Router ====================

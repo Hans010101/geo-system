@@ -614,12 +614,14 @@ export async function deleteTargetFact(id: number) {
 }
 
 // ==================== Alerts Helpers ====================
-export async function listAlerts(filters?: { severity?: string; isRead?: boolean; limit?: number; offset?: number }) {
+export async function listAlerts(filters?: { severity?: string; isRead?: boolean; status?: "active" | "resolved" | "dismissed"; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
   const conditions = [];
   if (filters?.severity) conditions.push(eq(alerts.severity, filters.severity as any));
   if (filters?.isRead !== undefined) conditions.push(eq(alerts.isRead, filters.isRead));
+  // H2 (2026-06): default to active-only when no status given, so resolved/dismissed are hidden.
+  conditions.push(eq(alerts.status, (filters?.status ?? "active") as any));
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [data, totalResult] = await Promise.all([
@@ -633,6 +635,8 @@ export async function listAlerts(filters?: { severity?: string; isRead?: boolean
       relatedQuestionId: alerts.relatedQuestionId,
       relatedPlatform: alerts.relatedPlatform,
       isRead: alerts.isRead,
+      status: alerts.status,
+      dedupKey: alerts.dedupKey,
       createdAt: alerts.createdAt,
       questionText: questions.text,
     })
@@ -665,6 +669,53 @@ export async function markAllAlertsRead() {
   const db = await getDb();
   if (!db) return;
   await db.update(alerts).set({ isRead: true }).where(eq(alerts.isRead, false));
+}
+
+// H2 (2026-06): explicit workflow status mutations.
+export async function setAlertStatus(id: number, status: "active" | "resolved" | "dismissed") {
+  const db = await getDb();
+  if (!db) return;
+  // resolving/dismissing implies read
+  const patch: Record<string, unknown> = { status };
+  if (status !== "active") patch.isRead = true;
+  await db.update(alerts).set(patch).where(eq(alerts.id, id));
+}
+
+// H3 (2026-06): "has the same (qid×platform×type) been alerted recently?" check.
+// Used by checkAlerts to dedupe within the configured window before inserting a new row.
+export async function findRecentAlertByDedupKey(dedupKey: string, withinHours = 7 * 24): Promise<{ id: number; createdAt: Date | null } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const cutoff = new Date(Date.now() - withinHours * 3600 * 1000);
+  const rows = await db
+    .select({ id: alerts.id, createdAt: alerts.createdAt })
+    .from(alerts)
+    .where(and(eq(alerts.dedupKey, dedupKey), gte(alerts.createdAt, cutoff)))
+    .orderBy(desc(alerts.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// H3 (2026-06): fetch the most recent prior sentimentScore for the same (questionId, platform)
+// excluding the current collection. Used for relative-trigger decision in checkAlerts.
+// Returns null when no prior analyzed collection exists (i.e. first-time-of-pair).
+export async function getPriorSentimentScore(questionId: string, platform: string, excludeCollectionId: number): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ score: analyses.sentimentScore, collectionId: collections.id })
+    .from(analyses)
+    .innerJoin(collections, eq(analyses.collectionId, collections.id))
+    .where(and(
+      eq(collections.questionId, questionId),
+      eq(collections.platform, platform),
+      eq(collections.status, "success" as any),
+      sql`${collections.id} <> ${excludeCollectionId}`,
+      sql`${analyses.sentimentScore} IS NOT NULL`,
+    ))
+    .orderBy(desc(collections.id))
+    .limit(1);
+  return rows[0]?.score ?? null;
 }
 
 // ==================== Platform Configs Helpers ====================

@@ -4,17 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Bell, CheckCheck, Eye } from "lucide-react";
+import { Bell, CheckCheck, Eye, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { SEVERITY_LABELS, SEVERITY_COLORS, PLATFORM_LABELS, type Platform } from "@shared/geo-types";
 
 export default function AlertCenter() {
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [readFilter, setReadFilter] = useState<string>("unread");
+  const [statusFilter, setStatusFilter] = useState<"active" | "resolved" | "dismissed">("active");
 
   const { data: alertsResult, isLoading } = trpc.alerts.list.useQuery({
     severity: severityFilter === "all" ? undefined : severityFilter,
-    isRead: readFilter === "all" ? undefined : readFilter === "read",
+    status: statusFilter,
     limit: 100,
   });
   const alertsList = alertsResult?.data;
@@ -36,6 +36,16 @@ export default function AlertCenter() {
     onSettled: () => {
       utils.alerts.list.invalidate();
     },
+  });
+
+  // H2: resolve = "已处理"; dismiss = "已忽略"; both remove from active list.
+  const resolveMutation = trpc.alerts.resolve.useMutation({
+    onSuccess: () => { utils.alerts.list.invalidate(); toast.success("已标记为已解决"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const dismissMutation = trpc.alerts.dismiss.useMutation({
+    onSuccess: () => { utils.alerts.list.invalidate(); toast.success("已忽略"); },
+    onError: (e) => toast.error(e.message),
   });
 
   const markAllReadMutation = trpc.alerts.markAllRead.useMutation({
@@ -81,14 +91,14 @@ export default function AlertCenter() {
             <SelectItem value="low">低</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={readFilter} onValueChange={setReadFilter}>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
           <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="阅读状态" />
+            <SelectValue placeholder="状态" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部</SelectItem>
-            <SelectItem value="unread">未读</SelectItem>
-            <SelectItem value="read">已读</SelectItem>
+            <SelectItem value="active">活跃</SelectItem>
+            <SelectItem value="resolved">已解决</SelectItem>
+            <SelectItem value="dismissed">已忽略</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -148,16 +158,43 @@ export default function AlertCenter() {
                       {new Date(alert.createdAt).toLocaleString("zh-CN")}
                     </p>
                   </div>
-                  {!alert.isRead && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => markReadMutation.mutate({ id: alert.id })}
-                      disabled={markReadMutation.isPending}
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!alert.isRead && statusFilter === "active" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="标记已读"
+                        onClick={() => markReadMutation.mutate({ id: alert.id })}
+                        disabled={markReadMutation.isPending}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {statusFilter === "active" && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="解决"
+                          className="text-emerald-600 hover:text-emerald-700"
+                          onClick={() => resolveMutation.mutate({ id: alert.id })}
+                          disabled={resolveMutation.isPending}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="忽略"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => dismissMutation.mutate({ id: alert.id })}
+                          disabled={dismissMutation.isPending}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

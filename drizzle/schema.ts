@@ -8,6 +8,7 @@ import {
   boolean,
   json,
   bigint,
+  decimal,
 } from "drizzle-orm/mysql-core";
 
 // ==================== Users ====================
@@ -80,6 +81,14 @@ export const collections = mysqlTable("collections", {
   errorMessage: text("errorMessage"),
   rawResponse: json("rawResponse"),
   batchId: varchar("batchId", { length: 64 }),
+  // H1 telemetry (2026-06): identify provider + actual model + token consumption + perf/cost
+  provider: varchar("provider", { length: 32 }),       // 'openrouter' | 'bai' | 'bailian' | 'platform' | null
+  realModel: varchar("realModel", { length: 128 }),    // model id echoed back by the API (data.model)
+  promptTokens: int("promptTokens"),
+  completionTokens: int("completionTokens"),
+  totalTokens: int("totalTokens"),
+  latencyMs: int("latencyMs"),
+  costUsd: decimal("costUsd", { precision: 10, scale: 6 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -187,6 +196,9 @@ export const alerts = mysqlTable("alerts", {
   relatedQuestionId: varchar("relatedQuestionId", { length: 32 }),
   relatedPlatform: varchar("relatedPlatform", { length: 32 }),
   isRead: boolean("isRead").default(false),
+  // H2 (2026-06): workflow status + dedup key for cross-process de-duplication
+  status: mysqlEnum("status", ["active", "resolved", "dismissed"]).default("active").notNull(),
+  dedupKey: varchar("dedupKey", { length: 256 }),  // `${qid}:${platform}:${alertType}`
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
