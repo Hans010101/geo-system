@@ -19,10 +19,11 @@ export const RELEVANCE_LABELS: Record<string, string> = {
   irrelevant: "无关",
 };
 
-export const FETCH_METHOD_LABELS: Record<string, string> = {
-  self: "自建抓取",
-  firecrawl: "Firecrawl",
-  snippet_only: "仅摘要",
+export const FETCH_ENGINE_LABELS: Record<string, string> = {
+  self: "自建 L1",
+  firecrawl: "Firecrawl L4",
+  snippet: "仅摘要",
+  snippet_only: "仅摘要", // legacy value tolerance
 };
 
 export const SENTIMENT_MONITOR_COLORS: Record<number, string> = {

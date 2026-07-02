@@ -1266,8 +1266,9 @@ export async function listMonitorArticles(filters?: {
     title: monitorArticles.title,
     publishedAt: monitorArticles.publishedAt,
     firstSeenAt: monitorArticles.firstSeenAt,
-    fetchMethod: monitorArticles.fetchMethod,
+    fetchEngine: monitorArticles.fetchEngine,
     fetchStatus: monitorArticles.fetchStatus,
+    fetchCostUsd: monitorArticles.fetchCostUsd,
     matchedKeywords: monitorArticles.matchedKeywords,
     sentimentScore: monitorArticles.sentimentScore,
     relevance: monitorArticles.relevance,
@@ -1322,19 +1323,35 @@ export async function getMonitorStats() {
     .from(monitorArticles)
     .groupBy(monitorArticles.threatLevel);
   const [costRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${monitorArticles.costUsd}), 0)` })
+    .select({
+      analysis: sql<string>`COALESCE(SUM(${monitorArticles.costUsd}), 0)`,
+      fetch: sql<string>`COALESCE(SUM(${monitorArticles.fetchCostUsd}), 0)`,
+    })
     .from(monitorArticles)
     .where(gte(monitorArticles.firstSeenAt, monthStart));
 
+  // Engine distribution (all-time) — shows how much the free L1 path absorbs vs paid L4.
+  const engineRows = await db
+    .select({ engine: monitorArticles.fetchEngine, c: count() })
+    .from(monitorArticles)
+    .groupBy(monitorArticles.fetchEngine);
+
   const threatDistribution: Record<string, number> = {};
   for (const r of threatDist) threatDistribution[r.threatLevel ?? "unanalyzed"] = r.c;
+  const engineDistribution: Record<string, number> = {};
+  for (const r of engineRows) engineDistribution[r.engine ?? "unknown"] = r.c;
 
+  const monthAnalysisCostUsd = Number(costRow?.analysis || 0);
+  const monthFetchCostUsd = Number(costRow?.fetch || 0);
   return {
     total: totalRow?.c || 0,
     todayNew: todayRow?.c || 0,
     weekTotal: weekRow?.c || 0,
     highThreat: highThreatRow?.c || 0,
     threatDistribution,
-    monthCostUsd: Number(costRow?.total || 0),
+    engineDistribution,
+    monthAnalysisCostUsd,
+    monthFetchCostUsd,
+    monthCostUsd: Math.round((monthAnalysisCostUsd + monthFetchCostUsd) * 1_000_000) / 1_000_000,
   };
 }

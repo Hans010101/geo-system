@@ -12,6 +12,7 @@ import { ENV } from "./_core/env";
 import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 import { runMonitorCycle, type MonitorCycleResult } from "./monitor/pipeline";
+import * as monitorBudget from "./monitor/budget";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2142,6 +2143,10 @@ const monitorRouter = router({
 
   stats: protectedProcedure.query(async () => {
     return db.getMonitorStats();
+  }),
+
+  getBudgetStatus: protectedProcedure.query(async () => {
+    return monitorBudget.readBudget();
   }),
 
   listSourceRules: protectedProcedure.query(async () => {

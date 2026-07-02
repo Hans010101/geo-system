@@ -8,7 +8,7 @@ import {
   THREAT_META,
   STANCE_META,
   RELEVANCE_LABELS,
-  FETCH_METHOD_LABELS,
+  FETCH_ENGINE_LABELS,
   SENTIMENT_MONITOR_COLORS,
 } from "@/lib/monitorLabels";
 
@@ -75,7 +75,7 @@ export default function MonitorArticleDetailSheet({
                   <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                     {detail.publishedAt && <span>发布 {new Date(detail.publishedAt).toLocaleString("zh-CN")}</span>}
                     {detail.firstSeenAt && <span>· 发现 {new Date(detail.firstSeenAt).toLocaleString("zh-CN")}</span>}
-                    <span>· 抓取: {FETCH_METHOD_LABELS[detail.fetchMethod || ""] || detail.fetchMethod || "—"}</span>
+                    <span>· 抓取: {FETCH_ENGINE_LABELS[detail.fetchEngine || ""] || detail.fetchEngine || "—"}</span>
                   </div>
                   <a
                     href={detail.url}

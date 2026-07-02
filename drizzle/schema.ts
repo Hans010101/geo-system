@@ -382,6 +382,7 @@ export const monitorArticles = mysqlTable(
     firstSeenAt: bigint("firstSeenAt", { mode: "number" }), // when we discovered it
     fetchMethod: mysqlEnum("fetchMethod", ["self", "firecrawl", "snippet_only"]),
     fetchStatus: mysqlEnum("fetchStatus", ["full", "partial", "failed"]),
+    fetchEngine: varchar("fetchEngine", { length: 16 }), // pluggable engine name: 'self'|'firecrawl'|'snippet'|(future L2/L3) — varchar, not enum, so new engines need no migration
     matchedKeywords: json("matchedKeywords"), // string[] of keywords that surfaced this url
     sentimentScore: int("sentimentScore"), // 1-5, DeepSeek
     relevance: mysqlEnum("relevance", ["high", "medium", "low", "irrelevant"]),
@@ -391,7 +392,8 @@ export const monitorArticles = mysqlTable(
     // Cost/token telemetry — mirrors collections.* (H1 pattern)
     promptTokens: int("promptTokens"),
     completionTokens: int("completionTokens"),
-    costUsd: decimal("costUsd", { precision: 10, scale: 6 }),
+    costUsd: decimal("costUsd", { precision: 10, scale: 6 }), // analysis (LLM) cost
+    fetchCostUsd: decimal("fetchCostUsd", { precision: 10, scale: 6 }).default("0"), // fetch cost: L1=0, L4=firecrawl credit折算
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => [

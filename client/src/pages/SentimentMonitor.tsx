@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import MonitorArticleDetailSheet from "@/components/MonitorArticleDetailSheet";
-import { THREAT_META, STANCE_META, RELEVANCE_LABELS, FETCH_METHOD_LABELS } from "@/lib/monitorLabels";
+import { THREAT_META, STANCE_META, RELEVANCE_LABELS, FETCH_ENGINE_LABELS } from "@/lib/monitorLabels";
 
 const PAGE_SIZE = 50;
 
@@ -53,16 +53,20 @@ export default function SentimentMonitor() {
   const { data: schedule } = trpc.monitor.getSchedule.useQuery(undefined, {
     refetchInterval: (q) => (q.state.data?.running ? 4000 : false),
   });
+  const { data: budget } = trpc.monitor.getBudgetStatus.useQuery();
 
   const trigger = trpc.monitor.triggerCycle.useMutation({
     onSuccess: (r) => {
       if (r.running) toast.info(r.message || "已有一轮监控正在运行");
-      else if (r.result)
+      else if (r.result) {
+        const ed = r.result.engineDist || {};
         toast.success(
-          `本轮完成：新入库 ${r.result.inserted} 篇（self ${r.result.fetchMethods.self} / firecrawl ${r.result.fetchMethods.firecrawl} / snippet ${r.result.fetchMethods.snippet_only}），成本 $${r.result.costUsd.toFixed(4)}`
+          `本轮完成：新入库 ${r.result.inserted} 篇（自建 ${ed.self || 0} / Firecrawl ${ed.firecrawl || 0} / 摘要 ${ed.snippet || 0}），成本 $${(r.result.fetchCostUsd + r.result.analysisCostUsd).toFixed(4)}${r.result.serperBudgetHit ? "（Serper 护栏触发）" : ""}`
         );
+      }
       utils.monitor.stats.invalidate();
       utils.monitor.listArticles.invalidate();
+      utils.monitor.getBudgetStatus.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -135,6 +139,57 @@ export default function SentimentMonitor() {
         />
       </div>
 
+      {/* Engine distribution + cost guardrails */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">抓取引擎分布(累计)</p>
+            {(() => {
+              const ed = stats?.engineDistribution || {};
+              const tot = Object.values(ed).reduce((a, b) => a + b, 0) || 1;
+              const rows: [string, string, string][] = [
+                ["self", "自建 L1(免费)", "#16a34a"],
+                ["firecrawl", "Firecrawl L4(付费)", "#ea580c"],
+                ["snippet", "仅摘要(抓取失败)", "#9ca3af"],
+              ];
+              return (
+                <div className="space-y-2">
+                  {rows.map(([k, label, color]) => {
+                    const n = ed[k] || 0;
+                    const pct = Math.round((n / tot) * 100);
+                    return (
+                      <div key={k}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span>{label}</span>
+                          <span className="text-muted-foreground">{n} · {pct}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[11px] text-muted-foreground pt-1">L1 占比越高成本越低;「仅摘要」高 = 反爬站点多,是 L2/L3 引擎候选。</p>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">成本护栏(本月)</p>
+            <div className="space-y-2.5">
+              <BudgetBar label="Firecrawl credits" used={budget?.firecrawl.used} limit={budget?.firecrawl.limit} />
+              <BudgetBar label="Serper 查询" used={budget?.serper.used} limit={budget?.serper.limit} />
+              <div className="flex justify-between text-xs pt-2 border-t">
+                <span className="text-muted-foreground">本月成本细分</span>
+                <span>抓取 ${(stats?.monthFetchCostUsd ?? 0).toFixed(4)} + 分析 ${(stats?.monthAnalysisCostUsd ?? 0).toFixed(4)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">
         <FilterSelect value={threat} onChange={(v) => { setThreat(v); resetPage(); }} placeholder="威胁等级"
@@ -197,7 +252,7 @@ export default function SentimentMonitor() {
                         </Badge>
                       </td>
                       <td className="p-2.5 text-center text-[11px] text-muted-foreground whitespace-nowrap">
-                        {FETCH_METHOD_LABELS[a.fetchMethod || ""] || "—"}
+                        {FETCH_ENGINE_LABELS[a.fetchEngine || ""] || "—"}
                       </td>
                       <td className="p-2.5 text-center">
                         <Eye className="h-3.5 w-3.5 text-muted-foreground inline" />
@@ -250,6 +305,24 @@ function KPICard({ title, value, icon, color, loading }: { title: string; value:
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function BudgetBar({ label, used, limit }: { label: string; used?: number; limit?: number }) {
+  const u = used ?? 0;
+  const l = limit ?? 1;
+  const pct = Math.min(100, Math.round((u / l) * 100));
+  const danger = pct >= 80;
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-0.5">
+        <span>{label}</span>
+        <span className={danger ? "text-red-600 font-medium" : "text-muted-foreground"}>{u} / {l}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: danger ? "#dc2626" : "#3b82f6" }} />
+      </div>
+    </div>
   );
 }
 

@@ -58,7 +58,22 @@ for (const r of RULES) {
   ruleUpserts++;
 }
 
+// --- Budget guardrail defaults (sysConfigs, set-if-absent so user tuning isn't clobbered) ---
+const BUDGET_DEFAULTS = {
+  monitor_firecrawl_monthly_limit: "800",
+  monitor_serper_monthly_limit: "2000",
+  monitor_max_articles_per_cycle: "50",
+};
+let budgetSet = 0;
+for (const [k, v] of Object.entries(BUDGET_DEFAULTS)) {
+  const [ex] = await conn.query("SELECT id FROM sysConfigs WHERE configKey=? LIMIT 1", [k]);
+  if (ex.length === 0) {
+    await conn.query("INSERT INTO sysConfigs (configKey, configValue) VALUES (?, ?)", [k, v]);
+    budgetSet++;
+  }
+}
+
 const [[kc]] = await conn.query("SELECT COUNT(*) c FROM monitor_keywords");
 const [[rc]] = await conn.query("SELECT COUNT(*) c FROM monitor_source_rules");
-console.log(`keywords: +${kwAdded} added, ${kc.c} total | source rules: ${ruleUpserts} upserted, ${rc.c} total`);
+console.log(`keywords: +${kwAdded} added, ${kc.c} total | source rules: ${ruleUpserts} upserted, ${rc.c} total | budget defaults: +${budgetSet} set`);
 await conn.end();
