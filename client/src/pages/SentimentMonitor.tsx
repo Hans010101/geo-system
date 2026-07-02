@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import MonitorArticleDetailSheet from "@/components/MonitorArticleDetailSheet";
-import { THREAT_META, STANCE_META, RELEVANCE_LABELS, FETCH_ENGINE_LABELS } from "@/lib/monitorLabels";
+import { THREAT_META, STANCE_META, RELEVANCE_LABELS, FETCH_ENGINE_LABELS, SOURCE_PLATFORM_META } from "@/lib/monitorLabels";
 
 const PAGE_SIZE = 50;
 
@@ -32,6 +32,7 @@ export default function SentimentMonitor() {
   const [stance, setStance] = useState<string>("all");
   const [relevance, setRelevance] = useState<string>("focus"); // default: 高+中 only
   const [range, setRange] = useState<string>("all");
+  const [source, setSource] = useState<string>("all");
   const [detailId, setDetailId] = useState<number | null>(null);
 
   const listInput = useMemo(() => {
@@ -44,9 +45,10 @@ export default function SentimentMonitor() {
       threatLevel: threat === "all" ? undefined : (threat as any),
       stance: stance === "all" ? undefined : (stance as any),
       ...(relevance === "focus" ? { focus: true } : relevance === "all" ? {} : { relevance: relevance as any }),
+      ...(source === "all" ? {} : { sourcePlatform: source }),
       startTime,
     };
-  }, [page, threat, stance, relevance, range]);
+  }, [page, threat, stance, relevance, range, source]);
 
   const { data: stats, isLoading: statsLoading } = trpc.monitor.stats.useQuery();
   const { data: resp, isLoading } = trpc.monitor.listArticles.useQuery(listInput);
@@ -78,6 +80,15 @@ export default function SentimentMonitor() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const { data: bnCookie } = trpc.monitor.binanceCookieStatus.useQuery();
+  const refreshCookie = trpc.monitor.refreshBinanceCookie.useMutation({
+    onSuccess: (r) => {
+      utils.monitor.binanceCookieStatus.invalidate();
+      if (r.ok) toast.success("币安 WAF cookie 已刷新");
+      else toast.error("刷新失败(需 Chromium 环境,或用外部脚本刷新): " + (r.error || ""));
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const articles = resp?.data ?? [];
   const total = resp?.total ?? 0;
@@ -103,6 +114,15 @@ export default function SentimentMonitor() {
                 onCheckedChange={(v) => setSchedule.mutate({ enabled: v })}
               />
               <span className="text-[11px] text-muted-foreground">{schedule?.cronExpression || "0 9,21 * * *"}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+              <span className="text-xs text-muted-foreground">币安 cookie</span>
+              <Badge variant={bnCookie?.valid ? "default" : "secondary"} className={`text-[10px] ${bnCookie?.valid ? "" : "text-orange-600"}`}>
+                {bnCookie?.valid ? "有效" : "无效/过期"}
+              </Badge>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={refreshCookie.isPending} onClick={() => refreshCookie.mutate()}>
+                {refreshCookie.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "刷新"}
+              </Button>
             </div>
             <Button
               onClick={() => trigger.mutate()}
@@ -139,8 +159,34 @@ export default function SentimentMonitor() {
         />
       </div>
 
-      {/* Engine distribution + cost guardrails */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Source + engine distribution + cost guardrails */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">信源分布(累计)</p>
+            {(() => {
+              const sd = stats?.sourceDistribution || {};
+              const tot = Object.values(sd).reduce((a, b) => a + b, 0) || 1;
+              const keys = Object.keys(sd).sort((a, b) => sd[b] - sd[a]);
+              if (keys.length === 0) return <p className="text-xs text-muted-foreground">暂无数据</p>;
+              return (
+                <div className="space-y-2">
+                  {keys.map((k) => {
+                    const meta = SOURCE_PLATFORM_META[k] || { label: k, color: "#9ca3af" };
+                    const n = sd[k];
+                    const pct = Math.round((n / tot) * 100);
+                    return (
+                      <div key={k}>
+                        <div className="flex justify-between text-xs mb-0.5"><span>{meta.label}</span><span className="text-muted-foreground">{n} · {pct}%</span></div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: meta.color }} /></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-muted-foreground mb-3">抓取引擎分布(累计)</p>
@@ -200,6 +246,8 @@ export default function SentimentMonitor() {
           options={[["focus", "重点(高+中)"], ["all", "全部相关性"], ["high", "高相关"], ["medium", "中相关"], ["low", "低相关"], ["irrelevant", "无关"]]} />
         <FilterSelect value={range} onChange={(v) => { setRange(v); resetPage(); }} placeholder="时间范围"
           options={[["all", "全部时间"], ["24h", "近 24 小时"], ["7d", "近 7 天"]]} />
+        <FilterSelect value={source} onChange={(v) => { setSource(v); resetPage(); }} placeholder="来源平台"
+          options={[["all", "全部来源"], ["web", "Web/新闻"], ["binance_square", "币安广场"]]} />
       </div>
 
       {/* Table */}
@@ -210,6 +258,7 @@ export default function SentimentMonitor() {
               <tr>
                 <th className="p-2.5 text-left font-medium">标题</th>
                 <th className="p-2.5 text-left font-medium">信源</th>
+                <th className="p-2.5 text-center font-medium">来源</th>
                 <th className="p-2.5 text-center font-medium">发布</th>
                 <th className="p-2.5 text-center font-medium">情感</th>
                 <th className="p-2.5 text-center font-medium">威胁</th>
@@ -219,9 +268,9 @@ export default function SentimentMonitor() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
               ) : articles.length === 0 ? (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">暂无文章。点击「立即运行一轮」开始监控。</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">暂无文章。点击「立即运行一轮」开始监控。</td></tr>
               ) : (
                 articles.map((a: any) => {
                   const threatMeta = THREAT_META[a.threatLevel || "none"];
@@ -241,6 +290,12 @@ export default function SentimentMonitor() {
                             </Badge>
                           )}
                         </div>
+                      </td>
+                      <td className="p-2.5 text-center">
+                        {(() => {
+                          const m = SOURCE_PLATFORM_META[a.sourcePlatform] || { label: a.sourcePlatform || "—", color: "#9ca3af" };
+                          return <Badge className="text-[9px] text-white border-0" style={{ backgroundColor: m.color }}>{m.label}</Badge>;
+                        })()}
                       </td>
                       <td className="p-2.5 text-center text-xs text-muted-foreground whitespace-nowrap">
                         {a.publishedAt ? new Date(a.publishedAt).toLocaleDateString("zh-CN") : "—"}

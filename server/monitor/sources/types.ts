@@ -1,0 +1,22 @@
+// Unified "social source" abstraction. Every discovery source (Serper, 币安广场, future X/Reddit)
+// implements SocialSource and returns DiscoveredPost[]. Adding a source = implement + register in
+// registry.ts; the pipeline doesn't change.
+export type SearchOpts = { tbs?: string; num?: number; gl?: string; hl?: string };
+
+export interface DiscoveredPost {
+  url: string;
+  title: string;
+  contentSnippet?: string; // short snippet (e.g. Serper) — used if no fullContent
+  fullContent?: string; // full text when the source returns it (e.g. 币安广场 API) → pipeline skips fetch
+  author?: string | null;
+  publishedAt?: number | null; // epoch ms
+  sourceName: string; // machine id: 'serper' | 'binance_square'
+  sourcePlatform: string; // stored/display key: 'web' | 'binance_square'
+}
+
+export interface SocialSource {
+  name: string; // 'serper' | 'binance_square' | (future 'x' | 'reddit')
+  platform: string; // stored sourcePlatform key
+  enabled: boolean;
+  search(keyword: string, opts?: SearchOpts): Promise<DiscoveredPost[]>;
+}

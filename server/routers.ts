@@ -13,6 +13,7 @@ import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
+import { refreshCookieViaBrowser, getCookieStatus } from "./monitor/sources/binance-cookie";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2118,6 +2119,7 @@ const monitorRouter = router({
           threatLevel: z.enum(["high", "medium", "low", "none"]).optional(),
           stance: z.enum(["hostile", "neutral", "friendly"]).optional(),
           relevance: z.enum(["high", "medium", "low", "irrelevant"]).optional(),
+          sourcePlatform: z.string().optional(),
           focus: z.boolean().optional(), // default view: high+medium only
           startTime: z.number().optional(),
           endTime: z.number().optional(),
@@ -2131,6 +2133,7 @@ const monitorRouter = router({
         threatLevel: input?.threatLevel,
         stance: input?.stance,
         relevance: input?.relevance,
+        sourcePlatform: input?.sourcePlatform,
         focus: input?.focus,
         startTime: input?.startTime,
         endTime: input?.endTime,
@@ -2166,6 +2169,11 @@ const monitorRouter = router({
     const ok = await reanalyzeArticle(input.id);
     return { success: ok };
   }),
+
+  // 币安广场 AWS WAF cookie status + on-demand refresh (needs Chromium; in Cloud Run this reports
+  // whether in-container refresh works — else refresh externally and it lands in sysConfigs).
+  binanceCookieStatus: protectedProcedure.query(async () => getCookieStatus()),
+  refreshBinanceCookie: adminProcedure.mutation(async () => refreshCookieViaBrowser()),
 
   getSchedule: protectedProcedure.query(async () => ({
     enabled: monitorSchedulerState.enabled,

@@ -26,6 +26,13 @@ export const FETCH_ENGINE_LABELS: Record<string, string> = {
   snippet_only: "仅摘要", // legacy value tolerance
 };
 
+export const SOURCE_PLATFORM_META: Record<string, { label: string; color: string }> = {
+  web: { label: "Web/新闻", color: "#6b7280" },
+  binance_square: { label: "币安广场", color: "#f0b90b" }, // Binance yellow
+  x: { label: "X", color: "#111827" },
+  reddit: { label: "Reddit", color: "#ff4500" },
+};
+
 export const SENTIMENT_MONITOR_COLORS: Record<number, string> = {
   1: "#dc2626",
   2: "#f97316",

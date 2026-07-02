@@ -1244,6 +1244,7 @@ export async function listMonitorArticles(filters?: {
   threatLevel?: string;
   stance?: string;
   relevance?: string;
+  sourcePlatform?: string;
   focus?: boolean; // default view: only high+medium (hide low/irrelevant noise)
   startTime?: number;
   endTime?: number;
@@ -1254,6 +1255,7 @@ export async function listMonitorArticles(filters?: {
   if (!db) return { data: [], total: 0 };
   const conditions = [];
   if (filters?.threatLevel) conditions.push(eq(monitorArticles.threatLevel, filters.threatLevel as any));
+  if (filters?.sourcePlatform) conditions.push(eq(monitorArticles.sourcePlatform, filters.sourcePlatform));
   if (filters?.relevance) conditions.push(eq(monitorArticles.relevance, filters.relevance as any));
   else if (filters?.focus) conditions.push(inArray(monitorArticles.relevance, ["high", "medium"] as any));
   if (filters?.startTime) conditions.push(gte(monitorArticles.firstSeenAt, filters.startTime));
@@ -1271,6 +1273,7 @@ export async function listMonitorArticles(filters?: {
     fetchEngine: monitorArticles.fetchEngine,
     fetchStatus: monitorArticles.fetchStatus,
     fetchCostUsd: monitorArticles.fetchCostUsd,
+    sourcePlatform: monitorArticles.sourcePlatform,
     matchedKeywords: monitorArticles.matchedKeywords,
     sentimentScore: monitorArticles.sentimentScore,
     relevance: monitorArticles.relevance,
@@ -1338,11 +1341,17 @@ export async function getMonitorStats() {
     .select({ engine: monitorArticles.fetchEngine, c: count() })
     .from(monitorArticles)
     .groupBy(monitorArticles.fetchEngine);
+  const sourceRows = await db
+    .select({ src: monitorArticles.sourcePlatform, c: count() })
+    .from(monitorArticles)
+    .groupBy(monitorArticles.sourcePlatform);
 
   const threatDistribution: Record<string, number> = {};
   for (const r of threatDist) threatDistribution[r.threatLevel ?? "unanalyzed"] = r.c;
   const engineDistribution: Record<string, number> = {};
   for (const r of engineRows) engineDistribution[r.engine ?? "unknown"] = r.c;
+  const sourceDistribution: Record<string, number> = {};
+  for (const r of sourceRows) sourceDistribution[r.src ?? "unknown"] = r.c;
 
   const monthAnalysisCostUsd = Number(costRow?.analysis || 0);
   const monthFetchCostUsd = Number(costRow?.fetch || 0);
@@ -1353,6 +1362,7 @@ export async function getMonitorStats() {
     highThreat: highThreatRow?.c || 0,
     threatDistribution,
     engineDistribution,
+    sourceDistribution,
     monthAnalysisCostUsd,
     monthFetchCostUsd,
     monthCostUsd: Math.round((monthAnalysisCostUsd + monthFetchCostUsd) * 1_000_000) / 1_000_000,

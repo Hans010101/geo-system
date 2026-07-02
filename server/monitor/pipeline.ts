@@ -1,16 +1,17 @@
-// Orchestrates one monitor cycle: search (Serper) → dedup → fetch (pluggable router) → analyze
-// (DeepSeek) → persist. Budget-guarded: Serper/Firecrawl monthly caps + per-cycle article cap.
-// Concurrency 3 with per-domain politeness.
+// Orchestrates one monitor cycle across all enabled SocialSources: search → cross-source dedup →
+// (fetch router unless the source already gave fullContent) → DeepSeek analyze → persist.
+// Budget-guarded (Serper monthly cap; per-cycle article cap). Concurrency 3 with per-domain politeness.
 import * as db from "../db";
-import { searchNews } from "./search";
 import { fetchArticle } from "./fetch/router";
 import { analyzeArticle } from "./analyzer";
 import * as budget from "./budget";
-import { normalizeUrl, sha256, domainOf, parseSerperDate, hasCJK, log } from "./util";
+import { enabledSources } from "./sources/registry";
+import type { DiscoveredPost } from "./sources/types";
+import { normalizeUrl, sha256, domainOf, hasCJK, log } from "./util";
 
-const CONCURRENCY = 3; // gentle on external sites
-const PER_DOMAIN_MS = 2000; // robots politeness: ≥2s between hits to the same domain (our L1 fetch)
-const MAX_CONTENT_CHARS = 200_000; // cap stored markdown
+const CONCURRENCY = 3;
+const PER_DOMAIN_MS = 2000;
+const MAX_CONTENT_CHARS = 200_000;
 
 export type MonitorCycleResult = {
   keywords: number;
@@ -20,108 +21,89 @@ export type MonitorCycleResult = {
   newArticles: number;
   inserted: number;
   analyzed: number;
-  engineDist: Record<string, number>; // fetchEngine → count (self/firecrawl/snippet/…)
+  engineDist: Record<string, number>; // fetchEngine → count (self/firecrawl/snippet/source_api)
+  sourceDist: Record<string, number>; // sourcePlatform → count (web/binance_square)
   fetchCostUsd: number;
   analysisCostUsd: number;
   failed: number;
   tbs: string;
 };
 
-// engine name → legacy fetchMethod enum value (back-compat column); unknown engines → null.
 function toFetchMethod(engine: string): "self" | "firecrawl" | "snippet_only" | null {
   if (engine === "snippet") return "snippet_only";
   if (engine === "self" || engine === "firecrawl") return engine;
-  return null;
+  return null; // 'source_api' and future engines have no legacy enum value
 }
 
+type FreshItem = { hash: string; post: DiscoveredPost; normUrl: string; matched: string[] };
+
 export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorCycleResult> {
-  // Per-keyword locale + freshness: CJK keywords → Serper gl=cn/hl=zh, else gl=us/hl=en; core (priority≥8)
-  // → qdr:d (fresh), broader keywords → qdr:w (coverage). opts.tbs, if given, overrides for all.
   const tbsOverride = opts?.tbs;
-  await budget.beginCycle(); // load limits + counters (applies monthly reset / picks up limit changes)
+  await budget.beginCycle();
   const maxPerCycle = budget.maxArticlesPerCycle();
   const keywords = await db.listMonitorKeywords(true);
+  const srcs = enabledSources();
 
-  // 1) Search each active keyword (Serper budget-gated), aggregate unique urls by normalized-url hash.
+  // 1) Every enabled source × every active keyword → aggregate unique posts (cross-source, by norm-url).
   let serperCalls = 0;
   let serperBudgetHit = false;
-  const discovered = new Map<
-    string,
-    { url: string; normUrl: string; title: string; snippet: string; date: string | null; matched: Set<string> }
-  >();
+  let serperExhausted = false;
+  const discovered = new Map<string, { post: DiscoveredPost; normUrl: string; matched: Set<string> }>();
   for (const kw of keywords) {
-    if (!budget.tryConsumeSerper()) {
-      serperBudgetHit = true;
-      log.warn(`Serper monthly budget exhausted; stopping search after ${serperCalls} calls`);
-      break;
-    }
-    try {
-      const zh = hasCJK(kw.keyword);
-      const kwTbs = tbsOverride ?? (kw.priority >= 8 ? "qdr:d" : "qdr:w");
-      const items = await searchNews(kw.keyword, {
-        tbs: kwTbs,
-        num: 20,
-        gl: zh ? "cn" : "us",
-        hl: zh ? "zh-cn" : "en",
-      });
-      serperCalls++;
-      for (const it of items) {
-        const normUrl = normalizeUrl(it.url);
-        const h = sha256(normUrl);
-        const existing = discovered.get(h);
-        if (existing) {
-          existing.matched.add(kw.keyword);
-        } else {
-          discovered.set(h, {
-            url: it.url,
-            normUrl,
-            title: it.title,
-            snippet: it.snippet,
-            date: it.date,
-            matched: new Set([kw.keyword]),
-          });
+    const zh = hasCJK(kw.keyword);
+    const kwTbs = tbsOverride ?? (kw.priority >= 8 ? "qdr:d" : "qdr:w");
+    for (const source of srcs) {
+      // Budget applies to Serper only (币安 API is free).
+      if (source.name === "serper") {
+        if (serperExhausted) continue;
+        if (!budget.tryConsumeSerper()) {
+          serperExhausted = true;
+          serperBudgetHit = true;
+          log.warn("Serper monthly budget exhausted; skipping remaining Serper searches");
+          continue;
         }
       }
-    } catch (e: any) {
-      log.error(`Serper search failed for "${kw.keyword}": ${String(e?.message || e).slice(0, 160)}`);
+      try {
+        const posts = await source.search(kw.keyword, { tbs: kwTbs, num: 20, gl: zh ? "cn" : "us", hl: zh ? "zh-cn" : "en" });
+        if (source.name === "serper") serperCalls++;
+        for (const p of posts) {
+          if (!p.url) continue;
+          const normUrl = normalizeUrl(p.url);
+          const h = sha256(normUrl);
+          const existing = discovered.get(h);
+          if (existing) existing.matched.add(kw.keyword);
+          else discovered.set(h, { post: p, normUrl, matched: new Set([kw.keyword]) });
+        }
+      } catch (e: any) {
+        log.error(`source ${source.name} failed for "${kw.keyword}": ${String(e?.message || e).slice(0, 160)}`);
+      }
     }
   }
-  log.info(`Search done: ${keywords.length} keywords, ${serperCalls} serper calls, ${discovered.size} unique urls`);
+  log.info(`Search done: ${keywords.length} keywords × ${srcs.length} sources → ${discovered.size} unique posts (serperCalls ${serperCalls})`);
 
-  // 2) Drop urls already stored (dedup); cap the batch at the budget's per-cycle limit.
-  const fresh: { hash: string; url: string; normUrl: string; title: string; snippet: string; date: string | null; matched: string[] }[] = [];
+  // 2) Drop already-stored (dedup vs DB), cap the batch.
+  const fresh: FreshItem[] = [];
   for (const [h, v] of Array.from(discovered)) {
-    const seen = await db.getMonitorArticleByUrlHash(h);
-    if (seen) continue;
-    fresh.push({ hash: h, url: v.url, normUrl: v.normUrl, title: v.title, snippet: v.snippet, date: v.date, matched: Array.from(v.matched) });
+    if (await db.getMonitorArticleByUrlHash(h)) continue;
+    fresh.push({ hash: h, post: v.post, normUrl: v.normUrl, matched: Array.from(v.matched) });
     if (fresh.length >= maxPerCycle) {
-      log.warn(`Reached per-cycle cap (${maxPerCycle}); ${discovered.size - fresh.length}+ new urls deferred`);
+      log.warn(`Reached per-cycle cap (${maxPerCycle}); ${discovered.size - fresh.length}+ new posts deferred`);
       break;
     }
   }
-  log.info(`Dedup done: ${fresh.length} new articles to process (cap ${maxPerCycle})`);
+  log.info(`Dedup done: ${fresh.length} new posts to process (cap ${maxPerCycle})`);
 
   const stats: MonitorCycleResult = {
-    keywords: keywords.length,
-    serperCalls,
-    serperBudgetHit,
-    discovered: discovered.size,
-    newArticles: fresh.length,
-    inserted: 0,
-    analyzed: 0,
-    engineDist: {},
-    fetchCostUsd: 0,
-    analysisCostUsd: 0,
-    failed: 0,
-    tbs: tbsOverride ?? "auto(d/w)",
+    keywords: keywords.length, serperCalls, serperBudgetHit, discovered: discovered.size,
+    newArticles: fresh.length, inserted: 0, analyzed: 0, engineDist: {}, sourceDist: {},
+    fetchCostUsd: 0, analysisCostUsd: 0, failed: 0, tbs: tbsOverride ?? "auto(d/w)",
   };
 
-  // 3) Fetch (router) + analyze + persist, with a worker pool + per-domain politeness.
+  // 3) Fetch (only if the source didn't give fullContent) + analyze + persist.
   const lastByDomain = new Map<string, number>();
   const politeWait = async (domain: string) => {
     const now = Date.now();
-    const last = lastByDomain.get(domain) || 0;
-    const wait = Math.max(0, PER_DOMAIN_MS - (now - last));
+    const wait = Math.max(0, PER_DOMAIN_MS - (now - (lastByDomain.get(domain) || 0)));
     lastByDomain.set(domain, now + wait);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   };
@@ -130,27 +112,40 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   const worker = async () => {
     while (cursor < fresh.length) {
       const cur = fresh[cursor++];
-      const domain = domainOf(cur.url);
+      const p = cur.post;
+      const domain = domainOf(p.url);
       try {
-        if (domain) await politeWait(domain);
-        const fr = await fetchArticle(cur.url, cur.snippet);
-        stats.engineDist[fr.engine] = (stats.engineDist[fr.engine] || 0) + 1;
-        stats.fetchCostUsd += fr.costUsd || 0;
-        const fetchStatus = fr.status || (fr.success ? "full" : "failed");
-        const contentMd = fr.contentMd ? fr.contentMd.slice(0, MAX_CONTENT_CHARS) : "";
+        let contentMd: string;
+        let title: string;
+        let fetchEngine: string;
+        let fetchStatus: "full" | "partial" | "failed";
+        let fetchCostUsd = 0;
+
+        if (p.fullContent && p.fullContent.length > 0) {
+          // Source (e.g. 币安广场 API) already returned full text → skip the fetch router entirely.
+          contentMd = p.fullContent.slice(0, MAX_CONTENT_CHARS);
+          title = p.title || contentMd.slice(0, 80);
+          fetchEngine = "source_api";
+          fetchStatus = "full";
+        } else {
+          if (domain) await politeWait(domain);
+          const fr = await fetchArticle(p.url, p.contentSnippet || "");
+          contentMd = fr.contentMd ? fr.contentMd.slice(0, MAX_CONTENT_CHARS) : "";
+          title = fr.title || p.title || "";
+          fetchEngine = fr.engine;
+          fetchStatus = (fr.status || (fr.success ? "full" : "failed")) as any;
+          fetchCostUsd = fr.costUsd || 0;
+        }
+        stats.engineDist[fetchEngine] = (stats.engineDist[fetchEngine] || 0) + 1;
+        stats.sourceDist[p.sourcePlatform] = (stats.sourceDist[p.sourcePlatform] || 0) + 1;
+        stats.fetchCostUsd += fetchCostUsd;
 
         let analysis = null;
         if (contentMd.length > 0) {
           try {
-            analysis = await analyzeArticle({
-              url: cur.url,
-              title: fr.title || cur.title,
-              contentMd,
-              snippet: cur.snippet,
-              fetchStatus: fetchStatus as any,
-            });
+            analysis = await analyzeArticle({ url: p.url, title, contentMd, snippet: p.contentSnippet || "", fetchStatus });
           } catch (e: any) {
-            log.error(`Analyze failed ${cur.url}: ${String(e?.message || e).slice(0, 160)}`);
+            log.error(`Analyze failed ${p.url}: ${String(e?.message || e).slice(0, 160)}`);
           }
         }
 
@@ -158,15 +153,16 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
           url: cur.normUrl.slice(0, 768),
           urlHash: cur.hash,
           domain: domain ? domain.slice(0, 128) : null,
-          title: (fr.title || cur.title || "").slice(0, 512) || null,
+          title: (title || "").slice(0, 512) || null,
           contentMd: contentMd || null,
           contentHash: contentMd ? sha256(contentMd) : null,
-          publishedAt: parseSerperDate(cur.date),
+          publishedAt: p.publishedAt ?? null,
           firstSeenAt: Date.now(),
-          fetchEngine: fr.engine,
-          fetchMethod: toFetchMethod(fr.engine) as any,
+          fetchEngine,
+          fetchMethod: toFetchMethod(fetchEngine) as any,
           fetchStatus: fetchStatus as any,
-          fetchCostUsd: String(fr.costUsd || 0),
+          fetchCostUsd: String(fetchCostUsd),
+          sourcePlatform: p.sourcePlatform,
           matchedKeywords: cur.matched,
           sentimentScore: analysis?.sentimentScore ?? null,
           relevance: analysis?.relevance ?? null,
@@ -179,13 +175,10 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
           costUsd: analysis?.costUsd != null ? String(analysis.costUsd) : null,
         });
         if (id) stats.inserted++;
-        if (analysis) {
-          stats.analyzed++;
-          stats.analysisCostUsd += analysis.costUsd || 0;
-        }
+        if (analysis) { stats.analyzed++; stats.analysisCostUsd += analysis.costUsd || 0; }
       } catch (e: any) {
         stats.failed++;
-        log.error(`Pipeline item failed ${cur.url}: ${String(e?.message || e).slice(0, 160)}`);
+        log.error(`Pipeline item failed ${p.url}: ${String(e?.message || e).slice(0, 160)}`);
       }
     }
   };
@@ -198,7 +191,6 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
 }
 
 // Re-run the analyzer on an already-stored article (using its saved content) under the current prompt.
-// Used by the reanalyze tRPC endpoint and the backfill script — no re-fetch, so no fetch cost.
 export async function reanalyzeArticle(id: number): Promise<boolean> {
   const a = await db.getMonitorArticleById(id);
   if (!a) return false;
