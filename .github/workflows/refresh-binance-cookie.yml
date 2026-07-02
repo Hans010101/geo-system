@@ -41,9 +41,16 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           # scoped user (cookie_writer) — password is a GitHub secret; hex, URL-safe
-          DATABASE_URL: mysql://cookie_writer:${{ secrets.DB_PASSWORD }}@127.0.0.1:3307/geo_system
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
+          # Skip GREEN (not red) when the required secrets aren't configured yet — avoids failing every
+          # 2h with a red ✗ while GCP_SA_KEY/DB_PASSWORD are still pending. Auto-activates once both are set.
+          if [ -z "${GCP_SA_KEY:-}" ] || [ -z "${DB_PASSWORD:-}" ]; then
+            echo "::warning::GCP_SA_KEY / DB_PASSWORD 未配置 — 跳过币安 cookie 刷新(配置这两个 secret 后自动生效)"
+            exit 0
+          fi
           set -euo pipefail
+          export DATABASE_URL="mysql://cookie_writer:${DB_PASSWORD}@127.0.0.1:3307/geo_system"
           curl -sSL -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.0/cloud-sql-proxy.linux.amd64
           chmod +x cloud-sql-proxy
           printf '%s' "$GCP_SA_KEY" > /tmp/sa-key.json
