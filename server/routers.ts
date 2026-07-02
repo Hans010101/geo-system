@@ -21,6 +21,7 @@ import {
   getCitationSourceActivity,
 } from "./monitor/penetration";
 import { cleanupOldArticles, CLEANUP_DAYS } from "./monitor/cleanup";
+import { initGuard } from "./_core/boot";
 import {
   generateMonitorReport,
   weeklyPeriodOf,
@@ -1927,20 +1928,17 @@ async function initScheduler() {
 }
 
 // ==================== Load Scheduler Config from DB ====================
-(async () => {
-  try {
-    const saved = await db.getSchedulerConfig();
-    if (saved) {
-      schedulerState.enabled = saved.enabled;
-      schedulerState.cronExpression = saved.cronExpression;
-      schedulerState.concurrency = saved.concurrency;
-      schedulerState.lastRunAt = saved.lastRunAt;
-      await initScheduler();
-    }
-  } catch (error: any) {
-    log.warn(`Failed to load scheduler config from DB: ${error.message}`);
+// initGuard: init failure degrades (feature off + ERROR log + visible on /api/health), never crashes boot.
+initGuard("geo-scheduler-boot", async () => {
+  const saved = await db.getSchedulerConfig();
+  if (saved) {
+    schedulerState.enabled = saved.enabled;
+    schedulerState.cronExpression = saved.cronExpression;
+    schedulerState.concurrency = saved.concurrency;
+    schedulerState.lastRunAt = saved.lastRunAt;
+    await initScheduler();
   }
-})();
+});
 
 // ==================== Users Router (developer only) ====================
 // ==================== Notifications Router (developer only) ====================
@@ -2108,48 +2106,40 @@ async function initMonitorScheduler() {
 }
 
 // Load monitor scheduler config from DB at boot (default OFF until the user enables it).
-(async () => {
-  try {
-    const saved = await db.getSchedulerConfig();
-    if (saved) {
-      monitorSchedulerState.enabled = (saved as any).monitorEnabled ?? false;
-      monitorSchedulerState.cronExpression = (saved as any).monitorCron ?? "0 9,21 * * *";
-      monitorSchedulerState.lastRunAt = (saved as any).monitorLastRunAt ?? null;
-      await initMonitorScheduler();
-    }
-  } catch (error: any) {
-    log.warn(`Failed to load monitor scheduler config from DB: ${error.message}`);
+initGuard("monitor-scheduler-boot", async () => {
+  const saved = await db.getSchedulerConfig();
+  if (saved) {
+    monitorSchedulerState.enabled = (saved as any).monitorEnabled ?? false;
+    monitorSchedulerState.cronExpression = (saved as any).monitorCron ?? "0 9,21 * * *";
+    monitorSchedulerState.lastRunAt = (saved as any).monitorLastRunAt ?? null;
+    await initMonitorScheduler();
   }
-})();
+});
 
 // Monitor maintenance crons (always-on infrastructure, independent of the monitorEnabled toggle):
 //  · 04:30 daily — 35天数据保鲜: clear contentMd of over-retention articles (cleanup.ts, idempotent)
 //  · 08:30 Monday — 舆情周报 for LAST week;  08:40 on the 1st — 舆情月报 for LAST month.
 // Report push (飞书/TG) is separately gated by sysConfigs monitor_report_push_enabled (default OFF).
-(async () => {
-  try {
-    const cron = await import("node-cron");
-    const tz = { timezone: "Asia/Shanghai" } as any;
-    cron.schedule("30 4 * * *", () => {
-      cleanupOldArticles().catch((e) => log.error(`Scheduled cleanup failed: ${e.message}`));
-    }, tz);
-    cron.schedule("30 8 * * 1", () => {
-      const lastWeek = weeklyPeriodOf(weeklyPeriodOf(Date.now()).startMs - 1);
-      generateMonitorReport("weekly", lastWeek.reportPeriod).catch((e) =>
-        log.error(`Scheduled weekly monitor report failed: ${e.message}`)
-      );
-    }, tz);
-    cron.schedule("40 8 1 * *", () => {
-      const lastMonth = monthlyPeriodOf(monthlyPeriodOf(Date.now()).startMs - 1);
-      generateMonitorReport("monthly", lastMonth.reportPeriod).catch((e) =>
-        log.error(`Scheduled monthly monitor report failed: ${e.message}`)
-      );
-    }, tz);
-    log.info("Monitor maintenance crons registered (cleanup 04:30, weekly 08:30 Mon, monthly 08:40 1st)");
-  } catch (error: any) {
-    log.error(`Failed to register monitor maintenance crons: ${error.message}`);
-  }
-})();
+initGuard("monitor-maintenance-crons", async () => {
+  const cron = await import("node-cron");
+  const tz = { timezone: "Asia/Shanghai" } as any;
+  cron.schedule("30 4 * * *", () => {
+    cleanupOldArticles().catch((e) => log.error(`Scheduled cleanup failed: ${e.message}`));
+  }, tz);
+  cron.schedule("30 8 * * 1", () => {
+    const lastWeek = weeklyPeriodOf(weeklyPeriodOf(Date.now()).startMs - 1);
+    generateMonitorReport("weekly", lastWeek.reportPeriod).catch((e) =>
+      log.error(`Scheduled weekly monitor report failed: ${e.message}`)
+    );
+  }, tz);
+  cron.schedule("40 8 1 * *", () => {
+    const lastMonth = monthlyPeriodOf(monthlyPeriodOf(Date.now()).startMs - 1);
+    generateMonitorReport("monthly", lastMonth.reportPeriod).catch((e) =>
+      log.error(`Scheduled monthly monitor report failed: ${e.message}`)
+    );
+  }, tz);
+  log.info("Monitor maintenance crons registered (cleanup 04:30, weekly 08:30 Mon, monthly 08:40 1st)");
+});
 
 const monitorRouter = router({
   // All authenticated users can view monitor data.

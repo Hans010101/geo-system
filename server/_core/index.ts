@@ -1,12 +1,16 @@
 import "dotenv/config";
+import "./preload"; // installs process-level guards BEFORE routers.ts boot IIFEs execute
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import { sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerAuthRoutes } from "../auth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./static";
+import { getBootErrors, getBootInfo } from "./boot";
+import { getDb } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,6 +39,28 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // Auth routes (register + login)
   registerAuthRoutes(app);
+  // Runtime health for post-deploy smoke tests + external probes (no auth; registered before the
+  // static "*" catch-all). ok=false (503) when DB is unreachable OR any boot-guard recorded an
+  // init failure — "deployed but degraded" becomes machine-detectable.
+  app.get("/api/health", async (_req, res) => {
+    let dbOk = false;
+    try {
+      const db = await getDb();
+      if (db) {
+        await Promise.race([
+          db.execute(sql`SELECT 1`),
+          new Promise((_r, rej) => setTimeout(() => rej(new Error("db health timeout")), 3000)),
+        ]);
+        dbOk = true;
+      }
+    } catch {
+      dbOk = false;
+    }
+    const bootErrors = getBootErrors();
+    const ok = dbOk && bootErrors.length === 0;
+    res.status(ok ? 200 : 503).json({ ok, db: dbOk, ...getBootInfo(), bootErrors });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",
@@ -63,4 +89,9 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// A server that fails to start must FAIL FAST (exit 1) so Cloud Run kills the instance and
+// retries/keeps traffic on healthy ones — not linger as a zombie process that never listens.
+startServer().catch((err) => {
+  console.error("[BOOT] Fatal: server failed to start:", err);
+  process.exit(1);
+});
