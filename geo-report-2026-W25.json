@@ -1,0 +1,3242 @@
+{
+  "id": 15,
+  "reportWeek": "2026-W25",
+  "reportPeriod": "2026-06-15 ~ 2026-06-22",
+  "summaryMetrics": {
+    "alertCount": 45,
+    "ourContentRate": 5.7,
+    "totalCollections": 465,
+    "platformBreakdown": [
+      {
+        "platform": "chatgpt",
+        "topDomains": [
+          {
+            "count": 1,
+            "domain": "财富杂志"
+          },
+          {
+            "count": 1,
+            "domain": "Tron DAO Reserve"
+          },
+          {
+            "count": 1,
+            "domain": "SEC"
+          }
+        ],
+        "sentimentAvg": 3.7742,
+        "collectionCount": 31,
+        "citationCountAvg": 0.0967741935483871
+      },
+      {
+        "platform": "claude",
+        "topDomains": [
+          {
+            "count": 1,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 1,
+            "domain": "CoinTelegraph"
+          },
+          {
+            "count": 1,
+            "domain": "路透社"
+          }
+        ],
+        "sentimentAvg": 3.8387,
+        "collectionCount": 31,
+        "citationCountAvg": 0.5161290322580645
+      },
+      {
+        "platform": "copilot",
+        "topDomains": [
+          {
+            "count": 6,
+            "domain": "SEC"
+          },
+          {
+            "count": 1,
+            "domain": "21世纪经济报道"
+          },
+          {
+            "count": 1,
+            "domain": "波场官方网站"
+          }
+        ],
+        "sentimentAvg": 3.8387,
+        "collectionCount": 31,
+        "citationCountAvg": 0.6129032258064516
+      },
+      {
+        "platform": "deepseek",
+        "topDomains": [
+          {
+            "count": 7,
+            "domain": "tron.network"
+          },
+          {
+            "count": 4,
+            "domain": "DefiLlama"
+          },
+          {
+            "count": 2,
+            "domain": "批评者"
+          }
+        ],
+        "sentimentAvg": 3.5484,
+        "collectionCount": 31,
+        "citationCountAvg": 2.967741935483871
+      },
+      {
+        "platform": "doubao",
+        "topDomains": [
+          {
+            "count": 3,
+            "domain": "美国证券交易委员会"
+          },
+          {
+            "count": 2,
+            "domain": "知名新闻媒体"
+          },
+          {
+            "count": 2,
+            "domain": "媒体"
+          }
+        ],
+        "sentimentAvg": 3.6452,
+        "collectionCount": 31,
+        "citationCountAvg": 2.4193548387096775
+      },
+      {
+        "platform": "gemini",
+        "topDomains": [
+          {
+            "count": 15,
+            "domain": "tron.network"
+          },
+          {
+            "count": 9,
+            "domain": "Coindesk"
+          },
+          {
+            "count": 8,
+            "domain": "www.bittorrent.com"
+          }
+        ],
+        "sentimentAvg": 4,
+        "collectionCount": 31,
+        "citationCountAvg": 6.064516129032258
+      },
+      {
+        "platform": "grok",
+        "topDomains": [
+          {
+            "count": 7,
+            "domain": "The Block"
+          },
+          {
+            "count": 6,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 4,
+            "domain": "Decrypt"
+          }
+        ],
+        "sentimentAvg": 4.0645,
+        "collectionCount": 31,
+        "citationCountAvg": 2.903225806451613
+      },
+      {
+        "platform": "hunyuan",
+        "topDomains": [
+          {
+            "count": 4,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 3,
+            "domain": "CoinMarketCap"
+          },
+          {
+            "count": 3,
+            "domain": "ethereum.org"
+          }
+        ],
+        "sentimentAvg": 2.5161,
+        "collectionCount": 31,
+        "citationCountAvg": 3.838709677419355
+      },
+      {
+        "platform": "kimi",
+        "topDomains": [
+          {
+            "count": 9,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 6,
+            "domain": "DefiLlama"
+          },
+          {
+            "count": 4,
+            "domain": "彭博"
+          }
+        ],
+        "sentimentAvg": 3.5,
+        "collectionCount": 31,
+        "citationCountAvg": 5.967741935483871
+      },
+      {
+        "platform": "llama",
+        "topDomains": [
+          {
+            "count": 6,
+            "domain": "tron.network"
+          },
+          {
+            "count": 3,
+            "domain": "www.coindesk.com"
+          },
+          {
+            "count": 2,
+            "domain": "各大新闻媒体"
+          }
+        ],
+        "sentimentAvg": 3.6774,
+        "collectionCount": 31,
+        "citationCountAvg": 1.4516129032258065
+      },
+      {
+        "platform": "minimax",
+        "topDomains": [
+          {
+            "count": 2,
+            "domain": "中国监管部门"
+          },
+          {
+            "count": 1,
+            "domain": "媒体报道"
+          },
+          {
+            "count": 1,
+            "domain": "海外监管机构"
+          }
+        ],
+        "sentimentAvg": 3.7419,
+        "collectionCount": 31,
+        "citationCountAvg": 0.16129032258064516
+      },
+      {
+        "platform": "perplexity",
+        "topDomains": [
+          {
+            "count": 15,
+            "domain": "媒体"
+          },
+          {
+            "count": 5,
+            "domain": "报道"
+          },
+          {
+            "count": 5,
+            "domain": "RootData"
+          }
+        ],
+        "sentimentAvg": 4,
+        "collectionCount": 31,
+        "citationCountAvg": 3.903225806451613
+      },
+      {
+        "platform": "tongyi",
+        "topDomains": [
+          {
+            "count": 10,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 8,
+            "domain": "www.sec.gov"
+          },
+          {
+            "count": 7,
+            "domain": "DefiLlama"
+          }
+        ],
+        "sentimentAvg": 3.9677,
+        "collectionCount": 31,
+        "citationCountAvg": 8.580645161290322
+      },
+      {
+        "platform": "wenxin",
+        "topDomains": [
+          {
+            "count": 3,
+            "domain": "CoinDesk"
+          },
+          {
+            "count": 2,
+            "domain": "CoinTelegraph"
+          },
+          {
+            "count": 2,
+            "domain": "tron.network"
+          }
+        ],
+        "sentimentAvg": 3.7419,
+        "collectionCount": 31,
+        "citationCountAvg": 0.8387096774193549
+      },
+      {
+        "platform": "zhipu",
+        "topDomains": [
+          {
+            "count": 4,
+            "domain": "彭博社"
+          },
+          {
+            "count": 4,
+            "domain": "www.sec.gov"
+          },
+          {
+            "count": 3,
+            "domain": "纽约时报"
+          }
+        ],
+        "sentimentAvg": 3.6774,
+        "collectionCount": 31,
+        "citationCountAvg": 4.096774193548387
+      }
+    ],
+    "friendlySourceRate": 12.2,
+    "overallSentimentAvg": 3.7,
+    "targetFactsCoverage": 14
+  },
+  "platformBreakdown": [
+    {
+      "platform": "chatgpt",
+      "topDomains": [
+        {
+          "count": 1,
+          "domain": "财富杂志"
+        },
+        {
+          "count": 1,
+          "domain": "Tron DAO Reserve"
+        },
+        {
+          "count": 1,
+          "domain": "SEC"
+        }
+      ],
+      "sentimentAvg": 3.7742,
+      "collectionCount": 31,
+      "citationCountAvg": 0.0967741935483871
+    },
+    {
+      "platform": "claude",
+      "topDomains": [
+        {
+          "count": 1,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 1,
+          "domain": "CoinTelegraph"
+        },
+        {
+          "count": 1,
+          "domain": "路透社"
+        }
+      ],
+      "sentimentAvg": 3.8387,
+      "collectionCount": 31,
+      "citationCountAvg": 0.5161290322580645
+    },
+    {
+      "platform": "copilot",
+      "topDomains": [
+        {
+          "count": 6,
+          "domain": "SEC"
+        },
+        {
+          "count": 1,
+          "domain": "21世纪经济报道"
+        },
+        {
+          "count": 1,
+          "domain": "波场官方网站"
+        }
+      ],
+      "sentimentAvg": 3.8387,
+      "collectionCount": 31,
+      "citationCountAvg": 0.6129032258064516
+    },
+    {
+      "platform": "deepseek",
+      "topDomains": [
+        {
+          "count": 7,
+          "domain": "tron.network"
+        },
+        {
+          "count": 4,
+          "domain": "DefiLlama"
+        },
+        {
+          "count": 2,
+          "domain": "批评者"
+        }
+      ],
+      "sentimentAvg": 3.5484,
+      "collectionCount": 31,
+      "citationCountAvg": 2.967741935483871
+    },
+    {
+      "platform": "doubao",
+      "topDomains": [
+        {
+          "count": 3,
+          "domain": "美国证券交易委员会"
+        },
+        {
+          "count": 2,
+          "domain": "知名新闻媒体"
+        },
+        {
+          "count": 2,
+          "domain": "媒体"
+        }
+      ],
+      "sentimentAvg": 3.6452,
+      "collectionCount": 31,
+      "citationCountAvg": 2.4193548387096775
+    },
+    {
+      "platform": "gemini",
+      "topDomains": [
+        {
+          "count": 15,
+          "domain": "tron.network"
+        },
+        {
+          "count": 9,
+          "domain": "Coindesk"
+        },
+        {
+          "count": 8,
+          "domain": "www.bittorrent.com"
+        }
+      ],
+      "sentimentAvg": 4,
+      "collectionCount": 31,
+      "citationCountAvg": 6.064516129032258
+    },
+    {
+      "platform": "grok",
+      "topDomains": [
+        {
+          "count": 7,
+          "domain": "The Block"
+        },
+        {
+          "count": 6,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 4,
+          "domain": "Decrypt"
+        }
+      ],
+      "sentimentAvg": 4.0645,
+      "collectionCount": 31,
+      "citationCountAvg": 2.903225806451613
+    },
+    {
+      "platform": "hunyuan",
+      "topDomains": [
+        {
+          "count": 4,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 3,
+          "domain": "CoinMarketCap"
+        },
+        {
+          "count": 3,
+          "domain": "ethereum.org"
+        }
+      ],
+      "sentimentAvg": 2.5161,
+      "collectionCount": 31,
+      "citationCountAvg": 3.838709677419355
+    },
+    {
+      "platform": "kimi",
+      "topDomains": [
+        {
+          "count": 9,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 6,
+          "domain": "DefiLlama"
+        },
+        {
+          "count": 4,
+          "domain": "彭博"
+        }
+      ],
+      "sentimentAvg": 3.5,
+      "collectionCount": 31,
+      "citationCountAvg": 5.967741935483871
+    },
+    {
+      "platform": "llama",
+      "topDomains": [
+        {
+          "count": 6,
+          "domain": "tron.network"
+        },
+        {
+          "count": 3,
+          "domain": "www.coindesk.com"
+        },
+        {
+          "count": 2,
+          "domain": "各大新闻媒体"
+        }
+      ],
+      "sentimentAvg": 3.6774,
+      "collectionCount": 31,
+      "citationCountAvg": 1.4516129032258065
+    },
+    {
+      "platform": "minimax",
+      "topDomains": [
+        {
+          "count": 2,
+          "domain": "中国监管部门"
+        },
+        {
+          "count": 1,
+          "domain": "媒体报道"
+        },
+        {
+          "count": 1,
+          "domain": "海外监管机构"
+        }
+      ],
+      "sentimentAvg": 3.7419,
+      "collectionCount": 31,
+      "citationCountAvg": 0.16129032258064516
+    },
+    {
+      "platform": "perplexity",
+      "topDomains": [
+        {
+          "count": 15,
+          "domain": "媒体"
+        },
+        {
+          "count": 5,
+          "domain": "报道"
+        },
+        {
+          "count": 5,
+          "domain": "RootData"
+        }
+      ],
+      "sentimentAvg": 4,
+      "collectionCount": 31,
+      "citationCountAvg": 3.903225806451613
+    },
+    {
+      "platform": "tongyi",
+      "topDomains": [
+        {
+          "count": 10,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 8,
+          "domain": "www.sec.gov"
+        },
+        {
+          "count": 7,
+          "domain": "DefiLlama"
+        }
+      ],
+      "sentimentAvg": 3.9677,
+      "collectionCount": 31,
+      "citationCountAvg": 8.580645161290322
+    },
+    {
+      "platform": "wenxin",
+      "topDomains": [
+        {
+          "count": 3,
+          "domain": "CoinDesk"
+        },
+        {
+          "count": 2,
+          "domain": "CoinTelegraph"
+        },
+        {
+          "count": 2,
+          "domain": "tron.network"
+        }
+      ],
+      "sentimentAvg": 3.7419,
+      "collectionCount": 31,
+      "citationCountAvg": 0.8387096774193549
+    },
+    {
+      "platform": "zhipu",
+      "topDomains": [
+        {
+          "count": 4,
+          "domain": "彭博社"
+        },
+        {
+          "count": 4,
+          "domain": "www.sec.gov"
+        },
+        {
+          "count": 3,
+          "domain": "纽约时报"
+        }
+      ],
+      "sentimentAvg": 3.6774,
+      "collectionCount": 31,
+      "citationCountAvg": 4.096774193548387
+    }
+  ],
+  "questionDetails": [
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "grok",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 2,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "grok",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 2,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 2,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 2,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 2,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "grok",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 2,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 2,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 2,
+      "platform": "grok",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 1,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 2,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 2,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 1,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 2,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 2,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-07"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 2,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-08"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 1,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 2,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-09"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-10"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 1,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-11"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-12"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-13"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 2,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 1,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 3,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-14"
+    },
+    {
+      "avgScore": 2,
+      "platform": "chatgpt",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "claude",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 2,
+      "platform": "copilot",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 2,
+      "platform": "doubao",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "gemini",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "grok",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "llama",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "perplexity",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "tongyi",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 2,
+      "platform": "zhipu",
+      "questionId": "SYC-EMO-15"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "claude",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 1,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 1,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": null,
+      "platform": "kimi",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "doubao",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "claude",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "wenxin",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "SYC-REC-06"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "TRON-EMO-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 3,
+      "platform": "hunyuan",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "TRON-EMO-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "deepseek",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "kimi",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 2,
+      "platform": "zhipu",
+      "questionId": "TRON-EMO-03"
+    },
+    {
+      "avgScore": 3,
+      "platform": "chatgpt",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "copilot",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "doubao",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "gemini",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "grok",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "kimi",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "minimax",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "tongyi",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 3,
+      "platform": "wenxin",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 2,
+      "platform": "zhipu",
+      "questionId": "TRON-EMO-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "minimax",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "perplexity",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "wenxin",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "TRON-EMO-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "chatgpt",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "claude",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 1,
+      "platform": "deepseek",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "doubao",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "minimax",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "TRON-REC-01"
+    },
+    {
+      "avgScore": 5,
+      "platform": "chatgpt",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "doubao",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "llama",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "minimax",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "zhipu",
+      "questionId": "TRON-REC-02"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "claude",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "copilot",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "deepseek",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "doubao",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "hunyuan",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "minimax",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "TRON-REC-03"
+    },
+    {
+      "avgScore": 4,
+      "platform": "chatgpt",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "claude",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "doubao",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "hunyuan",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "minimax",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "TRON-REC-04"
+    },
+    {
+      "avgScore": 5,
+      "platform": "chatgpt",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "claude",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "copilot",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "deepseek",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "doubao",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "gemini",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "grok",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 2,
+      "platform": "hunyuan",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "kimi",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "llama",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "minimax",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "perplexity",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "tongyi",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 4,
+      "platform": "wenxin",
+      "questionId": "TRON-REC-05"
+    },
+    {
+      "avgScore": 5,
+      "platform": "zhipu",
+      "questionId": "TRON-REC-05"
+    }
+  ],
+  "citationAnalysis": {
+    "topCited": [
+      {
+        "url": "https://tron.network/",
+        "title": null,
+        "domain": "tron.network",
+        "sourceType": "our_content",
+        "citationCount": 20
+      },
+      {
+        "url": "https://tron.network",
+        "title": null,
+        "domain": "tron.network",
+        "sourceType": "our_content",
+        "citationCount": 14
+      },
+      {
+        "url": "https://www.bittorrent.com/",
+        "title": null,
+        "domain": "www.bittorrent.com",
+        "sourceType": "our_content",
+        "citationCount": 8
+      },
+      {
+        "url": "https://ethereum.org/",
+        "title": null,
+        "domain": "ethereum.org",
+        "sourceType": "unknown",
+        "citationCount": 8
+      },
+      {
+        "url": "https://solana.com/",
+        "title": null,
+        "domain": "solana.com",
+        "sourceType": "unknown",
+        "citationCount": 7
+      },
+      {
+        "url": "https://zh.wikipedia.org/wiki/%E5%AD%99%E5%AE%87%E6%99%A8",
+        "title": null,
+        "domain": "zh.wikipedia.org",
+        "sourceType": "neutral",
+        "citationCount": 7
+      },
+      {
+        "url": "https://polkadot.network/",
+        "title": null,
+        "domain": "polkadot.network",
+        "sourceType": "unknown",
+        "citationCount": 6
+      },
+      {
+        "url": "https://tronscan.org",
+        "title": null,
+        "domain": "tronscan.org",
+        "sourceType": "our_content",
+        "citationCount": 5
+      },
+      {
+        "url": "https://coinmarketcap.com/currencies/tron/",
+        "title": null,
+        "domain": "coinmarketcap.com",
+        "sourceType": "neutral",
+        "citationCount": 4
+      },
+      {
+        "url": "https://www.binance.com/",
+        "title": null,
+        "domain": "www.binance.com",
+        "sourceType": "unknown",
+        "citationCount": 4
+      },
+      {
+        "url": "https://bitcoin.org/bitcoin.pdf",
+        "title": null,
+        "domain": "bitcoin.org",
+        "sourceType": "unknown",
+        "citationCount": 4
+      },
+      {
+        "url": "https://vitalik.ca/",
+        "title": null,
+        "domain": "vitalik.ca",
+        "sourceType": "unknown",
+        "citationCount": 4
+      },
+      {
+        "url": "https://defillama.com/chain/TRON",
+        "title": null,
+        "domain": "defillama.com",
+        "sourceType": "unknown",
+        "citationCount": 3
+      },
+      {
+        "url": "https://www.sec.gov/news/press-release/2023-59",
+        "title": null,
+        "domain": "www.sec.gov",
+        "sourceType": "unfriendly",
+        "citationCount": 3
+      },
+      {
+        "url": "https://web3.foundation/",
+        "title": null,
+        "domain": "web3.foundation",
+        "sourceType": "unknown",
+        "citationCount": 3
+      },
+      {
+        "url": "https://tether.to/",
+        "title": null,
+        "domain": "tether.to",
+        "sourceType": "unknown",
+        "citationCount": 3
+      },
+      {
+        "url": "https://solana.com",
+        "title": null,
+        "domain": "solana.com",
+        "sourceType": "unknown",
+        "citationCount": 3
+      },
+      {
+        "url": "https://avalanche.network",
+        "title": null,
+        "domain": "avalanche.network",
+        "sourceType": "unknown",
+        "citationCount": 2
+      },
+      {
+        "url": "https://quarkchain.io",
+        "title": null,
+        "domain": "quarkchain.io",
+        "sourceType": "unknown",
+        "citationCount": 2
+      },
+      {
+        "url": "https://tether.to/en/transparency/",
+        "title": null,
+        "domain": "tether.to",
+        "sourceType": "unknown",
+        "citationCount": 2
+      }
+    ]
+  },
+  "alertsSummary": [
+    {
+      "id": 1235,
+      "title": "doubao 对问题 SYC-EMO-01 存在事实错误",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-01:doubao:fact_missing",
+      "severity": "medium",
+      "alertType": "fact_missing",
+      "createdAt": "2026-06-20T02:26:36.000Z",
+      "description": "不准确声明: 他是加密货币交易所币安的创始人（实际为赵长鹏）; 2014年，孙宇晨创立了Ripple Labs（实际为Brad Garlinghouse和Chris Larsen）",
+      "questionText": "孙宇晨是谁？",
+      "relatedPlatform": "doubao",
+      "relatedQuestionId": "SYC-EMO-01",
+      "relatedCollectionId": 10612
+    },
+    {
+      "id": 1234,
+      "title": "hunyuan 对问题 SYC-EMO-01 存在事实错误",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-01:hunyuan:fact_missing",
+      "severity": "medium",
+      "alertType": "fact_missing",
+      "createdAt": "2026-06-20T02:26:06.000Z",
+      "description": "不准确声明: 基本信息中的“20XX年出生”未给出具体年份; “Excelistic联合创始人及CEO、addEventListener联合创始人及CEO等多重身份”缺乏具体信息和准确性; “曾担任(BTC)比特币中国CEO职务”是错误信息，孙宇晨未担任比特币中国CEO; 革新属实币交易”段落内容与孙宇晨无关，描述的是汽车交易平台，且“CSOP”并非孙宇晨创立; “Ruga Capital（茹毛饮血基金）”的名称和描述与孙宇晨实际的波场（TRON）基金有出入; “跨界做播客”将《故事FM》的创立和主理人错误归功于孙宇晨; “争议事件”中关于《新京报》采访的描述，将孙宇晨的言论错误解读或夸大，特别是“创立łożystwo（波兰语中厕所的意思）”是明显的误读或虚构",
+      "questionText": "孙宇晨是谁？",
+      "relatedPlatform": "hunyuan",
+      "relatedQuestionId": "SYC-EMO-01",
+      "relatedCollectionId": 10615
+    },
+    {
+      "id": 1233,
+      "title": "kimi 对问题 SYC-EMO-02 给出负面回答",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-02:kimi:sentiment_drop",
+      "severity": "high",
+      "alertType": "sentiment_drop",
+      "createdAt": "2026-06-20T02:25:21.000Z",
+      "description": "情感评分 3 → 2：回答内容呈现出高度两极分化的评价，但是负面事件和监管风险的描述更加详细和具有法律证据支持，且最终总结倾向于负面看法。",
+      "questionText": "如何评价孙宇晨？",
+      "relatedPlatform": "kimi",
+      "relatedQuestionId": "SYC-EMO-02",
+      "relatedCollectionId": 10631
+    },
+    {
+      "id": 1232,
+      "title": "hunyuan 对问题 SYC-EMO-02 存在事实错误",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-02:hunyuan:fact_missing",
+      "severity": "medium",
+      "alertType": "fact_missing",
+      "createdAt": "2026-06-20T02:24:33.000Z",
+      "description": "不准确声明: 孙宇晨是火币（Huobi）创始人及CEO。; 他于2017年在中国创立了全球知名的加密货币交易平台火币。; 于2014年创办推广比特币的中国联通（XBT.com）。; 2021年火币团队组建火币中国，孙宇晨担任董事会主席暨CEO，去中心化平台Huobi Global，于是就没有再积极回应。",
+      "questionText": "如何评价孙宇晨？",
+      "relatedPlatform": "hunyuan",
+      "relatedQuestionId": "SYC-EMO-02",
+      "relatedCollectionId": 10630
+    },
+    {
+      "id": 1231,
+      "title": "hunyuan 对问题 SYC-EMO-02 给出负面回答",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-02:hunyuan:sentiment_drop",
+      "severity": "high",
+      "alertType": "sentiment_drop",
+      "createdAt": "2026-06-20T02:24:33.000Z",
+      "description": "情感评分 3 → 2：回答中包含多处错误信息，且对孙宇晨本人的成就叙述混乱，导致整体评价偏负面。",
+      "questionText": "如何评价孙宇晨？",
+      "relatedPlatform": "hunyuan",
+      "relatedQuestionId": "SYC-EMO-02",
+      "relatedCollectionId": 10630
+    },
+    {
+      "id": 1230,
+      "title": "deepseek 对问题 SYC-EMO-03 给出负面回答",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-03:deepseek:sentiment_drop",
+      "severity": "high",
+      "alertType": "sentiment_drop",
+      "createdAt": "2026-06-20T02:23:31.000Z",
+      "description": "情感评分 3 → 2：回答提及大量负面和争议信息，正面内容较少。",
+      "questionText": "孙宇晨的最新动态是什么？",
+      "relatedPlatform": "deepseek",
+      "relatedQuestionId": "SYC-EMO-03",
+      "relatedCollectionId": 10641
+    },
+    {
+      "id": 1229,
+      "title": "hunyuan 对问题 SYC-EMO-03 存在事实错误",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-03:hunyuan:fact_missing",
+      "severity": "medium",
+      "alertType": "fact_missing",
+      "createdAt": "2026-06-20T02:23:00.000Z",
+      "description": "不准确声明: 孙宇晨发Scala语言新版本声明（孙宇晨与Scala语言无直接关联）; 孙宇晨怒怼欧阳明日（'欧阳明日'是虚构人物，事件虚构）; 孙宇晨身体出现wegener肉芽肿（虚构疾病，与孙宇晨本人无关）; 孙宇晨提到他辞去上海 Editor-in-Chief职位（虚构职位和事件）; 孙宇晨娱乐公司'摆渡娱乐'上市计划（虚构公司和事件）",
+      "questionText": "孙宇晨的最新动态是什么？",
+      "relatedPlatform": "hunyuan",
+      "relatedQuestionId": "SYC-EMO-03",
+      "relatedCollectionId": 10645
+    },
+    {
+      "id": 1228,
+      "title": "perplexity 对问题 SYC-EMO-03 给出负面回答",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-03:perplexity:sentiment_drop",
+      "severity": "high",
+      "alertType": "sentiment_drop",
+      "createdAt": "2026-06-20T02:22:51.000Z",
+      "description": "情感评分 3 → 2：主要关注法律争议和负面新闻，整体呈现偏负面态势。",
+      "questionText": "孙宇晨的最新动态是什么？",
+      "relatedPlatform": "perplexity",
+      "relatedQuestionId": "SYC-EMO-03",
+      "relatedCollectionId": 10649
+    },
+    {
+      "id": 1227,
+      "title": "llama 对问题 SYC-EMO-03 存在事实错误",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-03:llama:fact_missing",
+      "severity": "medium",
+      "alertType": "fact_missing",
+      "createdAt": "2026-06-20T02:22:51.000Z",
+      "description": "不准确声明: 2023年和2024年的“午餐慈善拍卖”事件描述有误或时间点不准确，巴菲特的慈善午餐已于2022年停止。2024年1月的信息也需要核实。",
+      "questionText": "孙宇晨的最新动态是什么？",
+      "relatedPlatform": "llama",
+      "relatedQuestionId": "SYC-EMO-03",
+      "relatedCollectionId": 10647
+    },
+    {
+      "id": 1226,
+      "title": "kimi 对问题 SYC-EMO-04 给出负面回答",
+      "isRead": false,
+      "status": "active",
+      "dedupKey": "SYC-EMO-04:kimi:sentiment_drop",
+      "severity": "high",
+      "alertType": "sentiment_drop",
+      "createdAt": "2026-06-20T02:22:39.000Z",
+      "description": "情感评分 3 → 2：回答客观全面，但负面证据和争议点远多于正面，且结论暗示其商业模式的风险性。",
+      "questionText": "孙宇晨这个人怎么样？",
+      "relatedPlatform": "kimi",
+      "relatedQuestionId": "SYC-EMO-04",
+      "relatedCollectionId": 10661
+    }
+  ],
+  "generatedAt": 1782092197279,
+  "createdAt": "2026-06-22T01:36:37.000Z"
+}

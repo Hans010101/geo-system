@@ -11,6 +11,7 @@ import {
   bigint,
   decimal,
   index,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
 // ==================== Users ====================
@@ -397,11 +398,14 @@ export const monitorArticles = mysqlTable(
     completionTokens: int("completionTokens"),
     costUsd: decimal("costUsd", { precision: 10, scale: 6 }), // analysis (LLM) cost
     fetchCostUsd: decimal("fetchCostUsd", { precision: 10, scale: 6 }).default("0"), // fetch cost: L1=0, L4=firecrawl credit折算
+    // 35天数据保鲜: 超期文章 contentMd 被清空(降存储), 轻量元数据保留供趋势/穿透分析。
+    archived: boolean("archived").default(false).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => [
     index("monitor_articles_urlHash_idx").on(table.urlHash),
     index("monitor_articles_domain_idx").on(table.domain),
+    index("monitor_articles_firstSeenAt_idx").on(table.firstSeenAt),
   ]
 );
 
@@ -421,3 +425,24 @@ export const monitorSourceRules = mysqlTable("monitor_source_rules", {
 
 export type MonitorSourceRule = typeof monitorSourceRules.$inferSelect;
 export type InsertMonitorSourceRule = typeof monitorSourceRules.$inferInsert;
+
+// ==================== Monitor Reports (舆情周报/月报) ====================
+// Independent from weeklyReports (那是 AI 平台情感周报): this aggregates the sentiment-monitor side
+// (articles/sources/threats/GEO penetration/costs) per calendar week or month.
+export const monitorReports = mysqlTable(
+  "monitor_reports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    reportType: mysqlEnum("reportType", ["weekly", "monthly"]).notNull(),
+    reportPeriod: varchar("reportPeriod", { length: 32 }).notNull(), // '2026-W27' | '2026-07'
+    periodStart: bigint("periodStart", { mode: "number" }).notNull(), // epoch ms, Asia/Shanghai boundary
+    periodEnd: bigint("periodEnd", { mode: "number" }).notNull(), // exclusive
+    reportData: json("reportData"), // full aggregation payload (overview/sources/threats/penetration/costs)
+    generatedAt: bigint("generatedAt", { mode: "number" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("monitor_reports_type_period_uq").on(table.reportType, table.reportPeriod)]
+);
+
+export type MonitorReport = typeof monitorReports.$inferSelect;
+export type InsertMonitorReport = typeof monitorReports.$inferInsert;

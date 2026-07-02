@@ -39,6 +39,7 @@ import {
   Radar,
   ScanSearch,
   Network,
+  ClipboardList,
 } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -56,6 +57,7 @@ const menuItems = [
   { icon: Bell, label: "预警中心", path: "/alerts" },
   { icon: Radar, label: "舆情监控", path: "/sentiment-monitor" },
   { icon: Network, label: "信源穿透", path: "/sentiment-monitor/penetration" },
+  { icon: ClipboardList, label: "舆情报告", path: "/sentiment-monitor/reports" },
 ];
 
 const configMenuItems = [

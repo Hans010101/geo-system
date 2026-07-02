@@ -205,6 +205,20 @@ export default function MonitorArticleDetailSheet({
                   )}
                 </div>
 
+                {/* 35天保鲜: 正文已被清理的归档文章 */}
+                {(detail as any).archived && !detail.contentMd && (
+                  <div className="px-6">
+                    <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                      📦 正文已归档清理（超 35 天数据保鲜策略）。标题、情感、威胁等分析元数据仍完整保留。
+                      {detail.url && (
+                        <>
+                          {" "}可访问 <a className="text-primary hover:underline" href={detail.url} target="_blank" rel="noreferrer">原文链接</a>。
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Full content (collapsible) */}
                 {detail.contentMd && (
                   <div className="px-6">

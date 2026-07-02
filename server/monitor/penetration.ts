@@ -15,12 +15,12 @@ import { normalizeDomain, log } from "./util";
 // LOWER first (so scheme stripping is case-insensitive like the JS regex) -> strip http(s):// ->
 // host-only (before first '/') -> before first ':' (port) -> strip leading www.
 // (citations.domain never actually carries a scheme, but keeping this in lock-step avoids silent drift.)
-function normSql(col: string): string {
+export function normSql(col: string): string {
   return `TRIM(LEADING 'www.' FROM SUBSTRING_INDEX(SUBSTRING_INDEX(REPLACE(REPLACE(LOWER(TRIM(${col})),'https://',''),'http://',''),'/',1),':',1))`;
 }
 
 // drizzle(mysql2) .execute() resolves to the raw driver result [rows, fields]; be defensive.
-async function rawRows<T = any>(query: any): Promise<T[]> {
+export async function rawRows<T = any>(query: any): Promise<T[]> {
   const db = await getDb();
   if (!db) return [];
   const res: any = await db.execute(query);

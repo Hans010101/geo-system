@@ -22,6 +22,7 @@ import ConfigUsers from "./pages/ConfigUsers";
 import ConfigNotifications from "./pages/ConfigNotifications";
 import SentimentMonitor from "./pages/SentimentMonitor";
 import SentimentPenetration from "./pages/SentimentPenetration";
+import MonitorReports from "./pages/MonitorReports";
 import ConfigMonitorKeywords from "./pages/ConfigMonitorKeywords";
 
 function Router() {
@@ -36,6 +37,7 @@ function Router() {
         <Route path="/alerts" component={AlertCenter} />
         <Route path="/sentiment-monitor" component={SentimentMonitor} />
         <Route path="/sentiment-monitor/penetration" component={SentimentPenetration} />
+        <Route path="/sentiment-monitor/reports" component={MonitorReports} />
         <Route path="/config/questions" component={ConfigQuestions} />
         <Route path="/config/target-facts" component={ConfigTargetFacts} />
         <Route path="/config/our-content" component={ConfigOurContent} />

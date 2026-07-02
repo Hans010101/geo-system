@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Eye,
   Network,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import MonitorArticleDetailSheet from "@/components/MonitorArticleDetailSheet";
@@ -33,14 +34,21 @@ export default function SentimentMonitor() {
   const [threat, setThreat] = useState<string>("all");
   const [stance, setStance] = useState<string>("all");
   const [relevance, setRelevance] = useState<string>("focus"); // default: 高+中 only
-  const [range, setRange] = useState<string>("all");
+  const [range, setRange] = useState<string>("24h"); // default: 近24小时(可切 3d/7d/全部)
+  const [sort, setSort] = useState<string>("time"); // default: 时间倒序,最新在上
   const [source, setSource] = useState<string>("all");
   const [detailId, setDetailId] = useState<number | null>(null);
 
   const listInput = useMemo(() => {
     const now = Date.now();
     const startTime =
-      range === "24h" ? now - 86_400_000 : range === "7d" ? now - 7 * 86_400_000 : undefined;
+      range === "24h"
+        ? now - 86_400_000
+        : range === "3d"
+          ? now - 3 * 86_400_000
+          : range === "7d"
+            ? now - 7 * 86_400_000
+            : undefined;
     return {
       page,
       pageSize: PAGE_SIZE,
@@ -49,8 +57,9 @@ export default function SentimentMonitor() {
       ...(relevance === "focus" ? { focus: true } : relevance === "all" ? {} : { relevance: relevance as any }),
       ...(source === "all" ? {} : { sourcePlatform: source }),
       startTime,
+      sort: sort as any,
     };
-  }, [page, threat, stance, relevance, range, source]);
+  }, [page, threat, stance, relevance, range, sort, source]);
 
   const { data: stats, isLoading: statsLoading } = trpc.monitor.stats.useQuery();
   const { data: resp, isLoading } = trpc.monitor.listArticles.useQuery(listInput);
@@ -110,12 +119,20 @@ export default function SentimentMonitor() {
           <p className="text-muted-foreground text-sm mt-1">
             自动发现、抓取、分析涉及孙宇晨 / 波场的新文章（Serper 发现 → 自建/Firecrawl 抓取 → DeepSeek 分析）。
           </p>
-          <Link
-            href="/sentiment-monitor/penetration"
-            className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1.5"
-          >
-            <Network className="h-4 w-4" /> 信源穿透 · GEO 引用联动 →
-          </Link>
+          <div className="flex items-center gap-4 mt-1.5 flex-wrap">
+            <Link
+              href="/sentiment-monitor/penetration"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              <Network className="h-4 w-4" /> 信源穿透 · GEO 引用联动 →
+            </Link>
+            <Link
+              href="/sentiment-monitor/reports"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              <ClipboardList className="h-4 w-4" /> 舆情周报/月报 →
+            </Link>
+          </div>
         </div>
         {isAdmin && (
           <div className="flex items-center gap-3 flex-wrap">
@@ -286,9 +303,11 @@ export default function SentimentMonitor() {
         <FilterSelect value={relevance} onChange={(v) => { setRelevance(v); resetPage(); }} placeholder="相关性"
           options={[["focus", "重点(高+中)"], ["all", "全部相关性"], ["high", "高相关"], ["medium", "中相关"], ["low", "低相关"], ["irrelevant", "无关"]]} />
         <FilterSelect value={range} onChange={(v) => { setRange(v); resetPage(); }} placeholder="时间范围"
-          options={[["all", "全部时间"], ["24h", "近 24 小时"], ["7d", "近 7 天"]]} />
+          options={[["24h", "近 24 小时"], ["3d", "近 3 天"], ["7d", "近 7 天"], ["all", "全部时间"]]} />
         <FilterSelect value={source} onChange={(v) => { setSource(v); resetPage(); }} placeholder="来源平台"
           options={[["all", "全部来源"], ["web", "Web/新闻"], ["binance_square", "币安广场"]]} />
+        <FilterSelect value={sort} onChange={(v) => { setSort(v); resetPage(); }} placeholder="排序"
+          options={[["time", "时间倒序"], ["threat", "威胁优先"], ["sentiment", "最负面优先"]]} />
       </div>
 
       {/* Table */}
@@ -318,9 +337,12 @@ export default function SentimentMonitor() {
                   const stanceMeta = a.stance ? STANCE_META[a.stance] : null;
                   return (
                     <tr key={a.id} className="border-t hover:bg-muted/30 cursor-pointer" onClick={() => setDetailId(a.id)}>
-                      <td className="p-2.5 max-w-[340px]">
+                      <td className={`p-2.5 max-w-[340px] ${a.archived ? "opacity-60" : ""}`}>
                         <p className="truncate">{a.title || "(无标题)"}</p>
-                        {a.relevance && <span className="text-[10px] text-muted-foreground">{RELEVANCE_LABELS[a.relevance]}</span>}
+                        <span className="text-[10px] text-muted-foreground">
+                          {a.relevance ? RELEVANCE_LABELS[a.relevance] : ""}
+                          {a.archived ? (a.relevance ? " · " : "") + "已归档" : ""}
+                        </span>
                       </td>
                       <td className="p-2.5">
                         <div className="flex items-center gap-1.5">

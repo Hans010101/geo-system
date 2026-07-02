@@ -20,6 +20,14 @@ import {
   getArticlePenetration,
   getCitationSourceActivity,
 } from "./monitor/penetration";
+import { cleanupOldArticles, CLEANUP_DAYS } from "./monitor/cleanup";
+import {
+  generateMonitorReport,
+  weeklyPeriodOf,
+  monthlyPeriodOf,
+  getReportPushEnabled,
+  setReportPushEnabled,
+} from "./monitor/report";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2114,6 +2122,35 @@ async function initMonitorScheduler() {
   }
 })();
 
+// Monitor maintenance crons (always-on infrastructure, independent of the monitorEnabled toggle):
+//  · 04:30 daily — 35天数据保鲜: clear contentMd of over-retention articles (cleanup.ts, idempotent)
+//  · 08:30 Monday — 舆情周报 for LAST week;  08:40 on the 1st — 舆情月报 for LAST month.
+// Report push (飞书/TG) is separately gated by sysConfigs monitor_report_push_enabled (default OFF).
+(async () => {
+  try {
+    const cron = await import("node-cron");
+    const tz = { timezone: "Asia/Shanghai" } as any;
+    cron.schedule("30 4 * * *", () => {
+      cleanupOldArticles().catch((e) => log.error(`Scheduled cleanup failed: ${e.message}`));
+    }, tz);
+    cron.schedule("30 8 * * 1", () => {
+      const lastWeek = weeklyPeriodOf(weeklyPeriodOf(Date.now()).startMs - 1);
+      generateMonitorReport("weekly", lastWeek.reportPeriod).catch((e) =>
+        log.error(`Scheduled weekly monitor report failed: ${e.message}`)
+      );
+    }, tz);
+    cron.schedule("40 8 1 * *", () => {
+      const lastMonth = monthlyPeriodOf(monthlyPeriodOf(Date.now()).startMs - 1);
+      generateMonitorReport("monthly", lastMonth.reportPeriod).catch((e) =>
+        log.error(`Scheduled monthly monitor report failed: ${e.message}`)
+      );
+    }, tz);
+    log.info("Monitor maintenance crons registered (cleanup 04:30, weekly 08:30 Mon, monthly 08:40 1st)");
+  } catch (error: any) {
+    log.error(`Failed to register monitor maintenance crons: ${error.message}`);
+  }
+})();
+
 const monitorRouter = router({
   // All authenticated users can view monitor data.
   listArticles: protectedProcedure
@@ -2129,6 +2166,7 @@ const monitorRouter = router({
           focus: z.boolean().optional(), // default view: high+medium only
           startTime: z.number().optional(),
           endTime: z.number().optional(),
+          sort: z.enum(["time", "threat", "sentiment"]).optional(), // default time = firstSeenAt DESC
         })
         .optional()
     )
@@ -2143,6 +2181,7 @@ const monitorRouter = router({
         focus: input?.focus,
         startTime: input?.startTime,
         endTime: input?.endTime,
+        sort: input?.sort,
         limit: pageSize,
         offset: page * pageSize,
       });
@@ -2275,6 +2314,41 @@ const monitorRouter = router({
   citationSourceActivity: protectedProcedure
     .input(z.object({ limit: z.number().min(1).max(200).optional() }).optional())
     .query(async ({ input }) => getCitationSourceActivity({ limit: input?.limit })),
+
+  // ===== 数据保鲜: 35天清正文(保守分层, 不物理删) =====
+  runCleanup: adminProcedure.mutation(async () => {
+    const res = await cleanupOldArticles();
+    return { success: true, retentionDays: CLEANUP_DAYS, ...res };
+  }),
+
+  // ===== 舆情周报/月报 (independent from GEO weeklyReports) =====
+  listReports: protectedProcedure
+    .input(z.object({ limit: z.number().min(1).max(200).optional() }).optional())
+    .query(async ({ input }) => db.listMonitorReports(input?.limit ?? 50)),
+
+  getReport: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    return db.getMonitorReportById(input.id);
+  }),
+
+  generateReport: adminProcedure
+    .input(
+      z.object({
+        reportType: z.enum(["weekly", "monthly"]),
+        period: z.string().max(32).optional(), // '2026-W27' / '2026-07'; omitted = current period
+      })
+    )
+    .mutation(async ({ input }) => {
+      const res = await generateMonitorReport(input.reportType, input.period);
+      return { success: true, ...res };
+    }),
+
+  getReportPushConfig: protectedProcedure.query(async () => ({ enabled: await getReportPushEnabled() })),
+  setReportPushConfig: adminProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await setReportPushEnabled(input.enabled);
+      return { success: true, enabled: input.enabled };
+    }),
 });
 
 // ==================== App Router ====================

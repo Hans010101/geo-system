@@ -21,6 +21,7 @@ import {
   monitorKeywords,
   monitorArticles,
   monitorSourceRules,
+  monitorReports,
   type InsertQuestion,
   type InsertCollection,
   type InsertCitation,
@@ -37,6 +38,7 @@ import {
   type InsertNotificationLog,
   type InsertMonitorKeyword,
   type InsertMonitorArticle,
+  type InsertMonitorReport,
 } from "../drizzle/schema";
 
 
@@ -1248,6 +1250,7 @@ export async function listMonitorArticles(filters?: {
   focus?: boolean; // default view: only high+medium (hide low/irrelevant noise)
   startTime?: number;
   endTime?: number;
+  sort?: "time" | "threat" | "sentiment"; // default 'time' = firstSeenAt DESC (最新在上)
   limit?: number;
   offset?: number;
 }) {
@@ -1282,16 +1285,28 @@ export async function listMonitorArticles(filters?: {
     analysisSummary: monitorArticles.analysisSummary,
     analyzedAt: monitorArticles.analyzedAt,
     costUsd: monitorArticles.costUsd,
+    archived: monitorArticles.archived,
     stance: monitorSourceRules.stance,
     authorityLevel: monitorSourceRules.authorityLevel,
   };
+  // Sort: 'time' 最新在上(default) | 'threat' 威胁降序 | 'sentiment' 最负面在上; ties broken by recency.
+  const orderBy =
+    filters?.sort === "threat"
+      ? [
+          sql`${monitorArticles.threatLevel} IS NULL`, // unanalyzed last (FIELD(NULL)=0 would float them first)
+          sql`FIELD(${monitorArticles.threatLevel}, 'high', 'medium', 'low', 'none')`,
+          desc(monitorArticles.firstSeenAt),
+        ]
+      : filters?.sort === "sentiment"
+        ? [sql`${monitorArticles.sentimentScore} IS NULL`, asc(monitorArticles.sentimentScore), desc(monitorArticles.firstSeenAt)]
+        : [desc(monitorArticles.firstSeenAt)];
   const [data, totalResult] = await Promise.all([
     db
       .select(listSelect)
       .from(monitorArticles)
       .leftJoin(monitorSourceRules, eq(monitorArticles.domain, monitorSourceRules.domain))
       .where(whereClause)
-      .orderBy(desc(monitorArticles.firstSeenAt))
+      .orderBy(...orderBy)
       .limit(filters?.limit || 50)
       .offset(filters?.offset || 0),
     db
@@ -1367,4 +1382,59 @@ export async function getMonitorStats() {
     monthFetchCostUsd,
     monthCostUsd: Math.round((monthAnalysisCostUsd + monthFetchCostUsd) * 1_000_000) / 1_000_000,
   };
+}
+
+// ==================== Monitor Reports (舆情周报/月报) ====================
+// Regeneration = overwrite: unique (reportType, reportPeriod) with onDuplicateKeyUpdate.
+export async function upsertMonitorReport(data: InsertMonitorReport): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .insert(monitorReports)
+    .values(data)
+    .onDuplicateKeyUpdate({
+      set: {
+        periodStart: data.periodStart,
+        periodEnd: data.periodEnd,
+        reportData: data.reportData,
+        generatedAt: data.generatedAt,
+      },
+    });
+}
+
+export async function listMonitorReports(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  // List view skips the heavy reportData payload; detail comes from getMonitorReportById.
+  return db
+    .select({
+      id: monitorReports.id,
+      reportType: monitorReports.reportType,
+      reportPeriod: monitorReports.reportPeriod,
+      periodStart: monitorReports.periodStart,
+      periodEnd: monitorReports.periodEnd,
+      generatedAt: monitorReports.generatedAt,
+      createdAt: monitorReports.createdAt,
+    })
+    .from(monitorReports)
+    .orderBy(desc(monitorReports.periodStart), desc(monitorReports.id))
+    .limit(limit);
+}
+
+export async function getMonitorReportById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(monitorReports).where(eq(monitorReports.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function getMonitorReportByPeriod(reportType: "weekly" | "monthly", reportPeriod: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(monitorReports)
+    .where(and(eq(monitorReports.reportType, reportType), eq(monitorReports.reportPeriod, reportPeriod)))
+    .limit(1);
+  return rows[0];
 }
