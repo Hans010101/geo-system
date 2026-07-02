@@ -11,6 +11,7 @@ import { calcCostUsd, detectProviderFromBaseUrl } from "@shared/llm-pricing";
 import { ENV } from "./_core/env";
 import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
+import { runMonitorCycle, type MonitorCycleResult } from "./monitor/pipeline";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2039,6 +2040,185 @@ const usersRouter = router({
     }),
 });
 
+// ==================== Sentiment Monitor (舆情监控 Phase 1) ====================
+const monitorSchedulerState = {
+  enabled: false,
+  cronExpression: "0 9,21 * * *", // 09:00 & 21:00 daily (Asia/Shanghai)
+  lastRunAt: null as number | null,
+  job: null as any,
+};
+let monitorCycleRunning = false;
+
+// Single-flight guard so manual triggers and cron never overlap.
+async function runMonitorCycleGuarded(tbs = "qdr:d"): Promise<MonitorCycleResult | null> {
+  if (monitorCycleRunning) {
+    log.warn("Monitor cycle already running; skipping this trigger");
+    return null;
+  }
+  monitorCycleRunning = true;
+  try {
+    const res = await runMonitorCycle({ tbs });
+    monitorSchedulerState.lastRunAt = Date.now();
+    await db.upsertSchedulerConfig({ monitorLastRunAt: monitorSchedulerState.lastRunAt }).catch(() => {});
+    return res;
+  } finally {
+    monitorCycleRunning = false;
+  }
+}
+
+async function initMonitorScheduler() {
+  if (monitorSchedulerState.job) {
+    monitorSchedulerState.job.stop();
+    monitorSchedulerState.job = null;
+  }
+  if (!monitorSchedulerState.enabled) {
+    log.info("Monitor scheduler disabled");
+    return;
+  }
+  try {
+    const cron = await import("node-cron");
+    monitorSchedulerState.job = cron.schedule(
+      monitorSchedulerState.cronExpression,
+      () => {
+        log.info("Scheduled monitor cycle triggered");
+        runMonitorCycleGuarded("qdr:d").catch((e) => log.error(`Scheduled monitor cycle failed: ${e.message}`));
+      },
+      { timezone: "Asia/Shanghai" }
+    );
+    log.info(`Monitor scheduler initialized: ${monitorSchedulerState.cronExpression}`);
+  } catch (error: any) {
+    log.error(`Failed to initialize monitor scheduler: ${error.message}`);
+  }
+}
+
+// Load monitor scheduler config from DB at boot (default OFF until the user enables it).
+(async () => {
+  try {
+    const saved = await db.getSchedulerConfig();
+    if (saved) {
+      monitorSchedulerState.enabled = (saved as any).monitorEnabled ?? false;
+      monitorSchedulerState.cronExpression = (saved as any).monitorCron ?? "0 9,21 * * *";
+      monitorSchedulerState.lastRunAt = (saved as any).monitorLastRunAt ?? null;
+      await initMonitorScheduler();
+    }
+  } catch (error: any) {
+    log.warn(`Failed to load monitor scheduler config from DB: ${error.message}`);
+  }
+})();
+
+const monitorRouter = router({
+  // All authenticated users can view monitor data.
+  listArticles: protectedProcedure
+    .input(
+      z
+        .object({
+          page: z.number().min(0).optional(),
+          pageSize: z.number().min(1).max(100).optional(),
+          threatLevel: z.enum(["high", "medium", "low", "none"]).optional(),
+          stance: z.enum(["hostile", "neutral", "friendly"]).optional(),
+          relevance: z.enum(["high", "medium", "low", "irrelevant"]).optional(),
+          startTime: z.number().optional(),
+          endTime: z.number().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const pageSize = input?.pageSize ?? 50;
+      const page = input?.page ?? 0;
+      return db.listMonitorArticles({
+        threatLevel: input?.threatLevel,
+        stance: input?.stance,
+        relevance: input?.relevance,
+        startTime: input?.startTime,
+        endTime: input?.endTime,
+        limit: pageSize,
+        offset: page * pageSize,
+      });
+    }),
+
+  getArticle: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    return db.getMonitorArticleById(input.id);
+  }),
+
+  stats: protectedProcedure.query(async () => {
+    return db.getMonitorStats();
+  }),
+
+  listSourceRules: protectedProcedure.query(async () => {
+    return db.listMonitorSourceRules();
+  }),
+
+  // admin+ operations
+  triggerCycle: adminProcedure.mutation(async () => {
+    const res = await runMonitorCycleGuarded("qdr:d");
+    if (!res) return { success: false, running: true, message: "已有一轮监控正在运行" };
+    return { success: true, running: false, result: res };
+  }),
+
+  getSchedule: protectedProcedure.query(async () => ({
+    enabled: monitorSchedulerState.enabled,
+    cronExpression: monitorSchedulerState.cronExpression,
+    lastRunAt: monitorSchedulerState.lastRunAt,
+    running: monitorCycleRunning,
+  })),
+
+  setSchedule: adminProcedure
+    .input(z.object({ enabled: z.boolean(), cronExpression: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      monitorSchedulerState.enabled = input.enabled;
+      if (input.cronExpression) monitorSchedulerState.cronExpression = input.cronExpression;
+      await db.upsertSchedulerConfig({
+        monitorEnabled: monitorSchedulerState.enabled,
+        monitorCron: monitorSchedulerState.cronExpression,
+      });
+      await initMonitorScheduler();
+      return {
+        success: true,
+        enabled: monitorSchedulerState.enabled,
+        cronExpression: monitorSchedulerState.cronExpression,
+      };
+    }),
+
+  listKeywords: adminProcedure.query(async () => {
+    return db.listMonitorKeywords(false);
+  }),
+
+  upsertKeyword: adminProcedure
+    .input(
+      z.object({
+        id: z.number().optional(),
+        keyword: z.string().min(1),
+        keywordGroup: z.string().optional().nullable(),
+        searchFreq: z.enum(["hourly", "daily"]).optional(),
+        isActive: z.boolean().optional(),
+        priority: z.number().min(0).max(10).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await db.upsertMonitorKeyword({
+        id: input.id,
+        keyword: input.keyword.trim(),
+        keywordGroup: input.keywordGroup ?? null,
+        searchFreq: input.searchFreq ?? "daily",
+        isActive: input.isActive ?? true,
+        priority: input.priority ?? 5,
+      });
+      return { success: true };
+    }),
+
+  toggleKeyword: adminProcedure
+    .input(z.object({ id: z.number(), isActive: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await db.toggleMonitorKeyword(input.id, input.isActive);
+      return { success: true };
+    }),
+
+  deleteKeyword: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    await db.deleteMonitorKeyword(input.id);
+    return { success: true };
+  }),
+});
+
 // ==================== App Router ====================
 export const appRouter = router({
   system: systemRouter,
@@ -2065,6 +2245,7 @@ export const appRouter = router({
   scheduler: schedulerRouter,
   users: usersRouter,
   notifications: notificationsRouter,
+  monitor: monitorRouter,
 });
 
 export type AppRouter = typeof appRouter;

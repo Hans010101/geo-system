@@ -57,6 +57,13 @@
       "when": 1778552145821,
       "tag": "0007_lumpy_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1782954916519,
+      "tag": "0008_wide_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

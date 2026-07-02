@@ -3,12 +3,14 @@ import {
   mysqlEnum,
   mysqlTable,
   text,
+  mediumtext,
   timestamp,
   varchar,
   boolean,
   json,
   bigint,
   decimal,
+  index,
 } from "drizzle-orm/mysql-core";
 
 // ==================== Users ====================
@@ -282,6 +284,10 @@ export const schedulerConfigs = mysqlTable("schedulerConfigs", {
   cronExpression: varchar("cronExpression", { length: 64 }).default("0 8 * * *").notNull(),
   concurrency: int("concurrency").default(5).notNull(),
   lastRunAt: bigint("lastRunAt", { mode: "number" }),
+  // Sentiment monitor scheduler (Phase 1, 2026-07): independent toggle, default OFF until verified.
+  monitorEnabled: boolean("monitorEnabled").default(false).notNull(),
+  monitorCron: varchar("monitorCron", { length: 64 }).default("0 9,21 * * *").notNull(),
+  monitorLastRunAt: bigint("monitorLastRunAt", { mode: "number" }),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -343,3 +349,70 @@ export const sysConfigs = mysqlTable("sysConfigs", {
 
 export type SysConfig = typeof sysConfigs.$inferSelect;
 export type InsertSysConfig = typeof sysConfigs.$inferInsert;
+
+// ==================== Sentiment Monitor (舆情监控 Phase 1, 2026-07) ====================
+// Keywords to search for on each monitor cycle (Serper news).
+export const monitorKeywords = mysqlTable("monitor_keywords", {
+  id: int("id").autoincrement().primaryKey(),
+  keyword: varchar("keyword", { length: 128 }).notNull(),
+  keywordGroup: varchar("keywordGroup", { length: 32 }), // e.g. 'syc' | 'tron' | 'competitor'
+  searchFreq: mysqlEnum("searchFreq", ["hourly", "daily"]).default("daily").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  priority: int("priority").default(5).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MonitorKeyword = typeof monitorKeywords.$inferSelect;
+export type InsertMonitorKeyword = typeof monitorKeywords.$inferInsert;
+
+// Discovered + fetched + analyzed articles. url UNIQUE for dedup; urlHash = sha256(normalized url).
+// Time fields are bigint epoch-ms to match analyses.analyzedAt / collections.timestamp.
+export const monitorArticles = mysqlTable(
+  "monitor_articles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    url: varchar("url", { length: 768 }).notNull().unique(),
+    urlHash: varchar("urlHash", { length: 64 }).notNull(),
+    domain: varchar("domain", { length: 128 }),
+    title: varchar("title", { length: 512 }),
+    contentMd: mediumtext("contentMd"),
+    contentHash: varchar("contentHash", { length: 64 }),
+    publishedAt: bigint("publishedAt", { mode: "number" }), // best-effort parse of Serper date
+    firstSeenAt: bigint("firstSeenAt", { mode: "number" }), // when we discovered it
+    fetchMethod: mysqlEnum("fetchMethod", ["self", "firecrawl", "snippet_only"]),
+    fetchStatus: mysqlEnum("fetchStatus", ["full", "partial", "failed"]),
+    matchedKeywords: json("matchedKeywords"), // string[] of keywords that surfaced this url
+    sentimentScore: int("sentimentScore"), // 1-5, DeepSeek
+    relevance: mysqlEnum("relevance", ["high", "medium", "low", "irrelevant"]),
+    threatLevel: mysqlEnum("threatLevel", ["high", "medium", "low", "none"]),
+    analysisSummary: text("analysisSummary"),
+    analyzedAt: bigint("analyzedAt", { mode: "number" }),
+    // Cost/token telemetry — mirrors collections.* (H1 pattern)
+    promptTokens: int("promptTokens"),
+    completionTokens: int("completionTokens"),
+    costUsd: decimal("costUsd", { precision: 10, scale: 6 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("monitor_articles_urlHash_idx").on(table.urlHash),
+    index("monitor_articles_domain_idx").on(table.domain),
+  ]
+);
+
+export type MonitorArticle = typeof monitorArticles.$inferSelect;
+export type InsertMonitorArticle = typeof monitorArticles.$inferInsert;
+
+// Per-domain authority + stance, used to weight threat level. Seeded from GEO citation analysis.
+export const monitorSourceRules = mysqlTable("monitor_source_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  domain: varchar("domain", { length: 128 }).notNull().unique(),
+  authorityLevel: int("authorityLevel").default(5).notNull(), // 1-10
+  stance: mysqlEnum("stance", ["hostile", "neutral", "friendly"]).default("neutral").notNull(),
+  notes: varchar("notes", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MonitorSourceRule = typeof monitorSourceRules.$inferSelect;
+export type InsertMonitorSourceRule = typeof monitorSourceRules.$inferInsert;

@@ -18,6 +18,9 @@ import {
   notificationConfigs,
   notificationLogs,
   sysConfigs,
+  monitorKeywords,
+  monitorArticles,
+  monitorSourceRules,
   type InsertQuestion,
   type InsertCollection,
   type InsertCitation,
@@ -32,6 +35,8 @@ import {
   type InsertSchedulerConfig,
   type InsertNotificationConfig,
   type InsertNotificationLog,
+  type InsertMonitorKeyword,
+  type InsertMonitorArticle,
 } from "../drizzle/schema";
 
 
@@ -1005,6 +1010,9 @@ export async function upsertSchedulerConfig(data: Partial<InsertSchedulerConfig>
     if (data.cronExpression !== undefined) updateSet.cronExpression = data.cronExpression;
     if (data.concurrency !== undefined) updateSet.concurrency = data.concurrency;
     if (data.lastRunAt !== undefined) updateSet.lastRunAt = data.lastRunAt;
+    if (data.monitorEnabled !== undefined) updateSet.monitorEnabled = data.monitorEnabled;
+    if (data.monitorCron !== undefined) updateSet.monitorCron = data.monitorCron;
+    if (data.monitorLastRunAt !== undefined) updateSet.monitorLastRunAt = data.monitorLastRunAt;
     if (Object.keys(updateSet).length > 0) {
       await db.update(schedulerConfigs).set(updateSet).where(eq(schedulerConfigs.id, existing.id));
     }
@@ -1118,4 +1126,215 @@ export async function listAlertsByBatchCollections(batchId: string) {
   .innerJoin(collections, eq(alerts.relatedCollectionId, collections.id))
   .where(eq(collections.batchId, batchId))
   .orderBy(desc(alerts.createdAt));
+}
+
+// ==================== Global API Key by Name (Serper / Firecrawl / LLM providers) ====================
+// Sentiment monitor stores Serper/Firecrawl keys as globalApiKeys rows (name = 'Serper' | 'Firecrawl').
+export async function getGlobalApiKeyByName(name: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(globalApiKeys)
+    .where(and(eq(globalApiKeys.name, name), eq(globalApiKeys.isActive, true)))
+    .limit(1);
+  return rows[0];
+}
+
+// ==================== Sentiment Monitor Helpers (Phase 1) ====================
+export async function listMonitorKeywords(activeOnly = false) {
+  const db = await getDb();
+  if (!db) return [];
+  if (activeOnly) {
+    return db
+      .select()
+      .from(monitorKeywords)
+      .where(eq(monitorKeywords.isActive, true))
+      .orderBy(desc(monitorKeywords.priority), asc(monitorKeywords.id));
+  }
+  return db.select().from(monitorKeywords).orderBy(desc(monitorKeywords.priority), asc(monitorKeywords.id));
+}
+
+export async function upsertMonitorKeyword(data: InsertMonitorKeyword & { id?: number }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db
+      .update(monitorKeywords)
+      .set({
+        keyword: data.keyword,
+        keywordGroup: data.keywordGroup,
+        searchFreq: data.searchFreq,
+        isActive: data.isActive,
+        priority: data.priority,
+      })
+      .where(eq(monitorKeywords.id, data.id));
+  } else {
+    await db.insert(monitorKeywords).values(data);
+  }
+}
+
+export async function toggleMonitorKeyword(id: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(monitorKeywords).set({ isActive }).where(eq(monitorKeywords.id, id));
+}
+
+export async function deleteMonitorKeyword(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(monitorKeywords).where(eq(monitorKeywords.id, id));
+}
+
+export async function listMonitorSourceRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(monitorSourceRules).orderBy(desc(monitorSourceRules.authorityLevel));
+}
+
+export async function getMonitorSourceRuleByDomain(domain: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(monitorSourceRules)
+    .where(eq(monitorSourceRules.domain, domain))
+    .limit(1);
+  return rows[0];
+}
+
+// Dedup lookup: urlHash = sha256(normalized url)
+export async function getMonitorArticleByUrlHash(urlHash: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select({ id: monitorArticles.id, url: monitorArticles.url })
+    .from(monitorArticles)
+    .where(eq(monitorArticles.urlHash, urlHash))
+    .limit(1);
+  return rows[0];
+}
+
+export async function createMonitorArticle(data: InsertMonitorArticle) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(monitorArticles).values(data);
+  return result[0].insertId;
+}
+
+export async function updateMonitorArticle(id: number, data: Partial<InsertMonitorArticle>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(monitorArticles).set(data).where(eq(monitorArticles.id, id));
+}
+
+// Full detail incl. contentMd + joined source stance/authority.
+export async function getMonitorArticleById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(monitorArticles).where(eq(monitorArticles.id, id)).limit(1);
+  const article = rows[0];
+  if (!article) return undefined;
+  const rule = article.domain ? await getMonitorSourceRuleByDomain(article.domain) : undefined;
+  return { ...article, stance: rule?.stance ?? null, authorityLevel: rule?.authorityLevel ?? null };
+}
+
+// List for the table — skips the big contentMd field (mirrors listCollections), leftJoins stance.
+export async function listMonitorArticles(filters?: {
+  threatLevel?: string;
+  stance?: string;
+  relevance?: string;
+  startTime?: number;
+  endTime?: number;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const conditions = [];
+  if (filters?.threatLevel) conditions.push(eq(monitorArticles.threatLevel, filters.threatLevel as any));
+  if (filters?.relevance) conditions.push(eq(monitorArticles.relevance, filters.relevance as any));
+  if (filters?.startTime) conditions.push(gte(monitorArticles.firstSeenAt, filters.startTime));
+  if (filters?.endTime) conditions.push(lte(monitorArticles.firstSeenAt, filters.endTime));
+  if (filters?.stance) conditions.push(eq(monitorSourceRules.stance, filters.stance as any));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const listSelect = {
+    id: monitorArticles.id,
+    url: monitorArticles.url,
+    domain: monitorArticles.domain,
+    title: monitorArticles.title,
+    publishedAt: monitorArticles.publishedAt,
+    firstSeenAt: monitorArticles.firstSeenAt,
+    fetchMethod: monitorArticles.fetchMethod,
+    fetchStatus: monitorArticles.fetchStatus,
+    matchedKeywords: monitorArticles.matchedKeywords,
+    sentimentScore: monitorArticles.sentimentScore,
+    relevance: monitorArticles.relevance,
+    threatLevel: monitorArticles.threatLevel,
+    analysisSummary: monitorArticles.analysisSummary,
+    analyzedAt: monitorArticles.analyzedAt,
+    costUsd: monitorArticles.costUsd,
+    stance: monitorSourceRules.stance,
+    authorityLevel: monitorSourceRules.authorityLevel,
+  };
+  const [data, totalResult] = await Promise.all([
+    db
+      .select(listSelect)
+      .from(monitorArticles)
+      .leftJoin(monitorSourceRules, eq(monitorArticles.domain, monitorSourceRules.domain))
+      .where(whereClause)
+      .orderBy(desc(monitorArticles.firstSeenAt))
+      .limit(filters?.limit || 50)
+      .offset(filters?.offset || 0),
+    db
+      .select({ count: count() })
+      .from(monitorArticles)
+      .leftJoin(monitorSourceRules, eq(monitorArticles.domain, monitorSourceRules.domain))
+      .where(whereClause),
+  ]);
+  return { data, total: totalResult[0]?.count || 0 };
+}
+
+export async function getMonitorStats() {
+  const db = await getDb();
+  if (!db) return null;
+  const now = Date.now();
+  const dayStart = now - 24 * 60 * 60 * 1000;
+  const weekStart = now - 7 * 24 * 60 * 60 * 1000;
+  const monthStart = now - 30 * 24 * 60 * 60 * 1000;
+
+  const [totalRow] = await db.select({ c: count() }).from(monitorArticles);
+  const [todayRow] = await db
+    .select({ c: count() })
+    .from(monitorArticles)
+    .where(gte(monitorArticles.firstSeenAt, dayStart));
+  const [weekRow] = await db
+    .select({ c: count() })
+    .from(monitorArticles)
+    .where(gte(monitorArticles.firstSeenAt, weekStart));
+  const [highThreatRow] = await db
+    .select({ c: count() })
+    .from(monitorArticles)
+    .where(eq(monitorArticles.threatLevel, "high"));
+  const threatDist = await db
+    .select({ threatLevel: monitorArticles.threatLevel, c: count() })
+    .from(monitorArticles)
+    .groupBy(monitorArticles.threatLevel);
+  const [costRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${monitorArticles.costUsd}), 0)` })
+    .from(monitorArticles)
+    .where(gte(monitorArticles.firstSeenAt, monthStart));
+
+  const threatDistribution: Record<string, number> = {};
+  for (const r of threatDist) threatDistribution[r.threatLevel ?? "unanalyzed"] = r.c;
+
+  return {
+    total: totalRow?.c || 0,
+    todayNew: todayRow?.c || 0,
+    weekTotal: weekRow?.c || 0,
+    highThreat: highThreatRow?.c || 0,
+    threatDistribution,
+    monthCostUsd: Number(costRow?.total || 0),
+  };
 }

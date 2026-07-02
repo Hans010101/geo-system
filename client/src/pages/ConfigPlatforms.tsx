@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import MonitorSourceKeysCard from "@/components/MonitorSourceKeysCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -132,6 +133,9 @@ export default function ConfigPlatforms() {
 
       {/* Primary Provider switch + route preview */}
       <PrimaryProviderCard />
+
+      {/* Sentiment monitor data-source keys (Serper / Firecrawl) */}
+      <MonitorSourceKeysCard />
 
       {/* Global API Config Card - clickable */}
       <Card

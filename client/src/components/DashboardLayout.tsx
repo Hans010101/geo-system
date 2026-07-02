@@ -36,6 +36,8 @@ import {
   Clock,
   Users,
   Bell as BellIcon,
+  Radar,
+  ScanSearch,
 } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -51,6 +53,7 @@ const menuItems = [
   { icon: Link2, label: "引用源分析", path: "/citations" },
   { icon: FileBarChart, label: "周报", path: "/reports" },
   { icon: Bell, label: "预警中心", path: "/alerts" },
+  { icon: Radar, label: "舆情监控", path: "/sentiment-monitor" },
 ];
 
 const configMenuItems = [
@@ -60,6 +63,7 @@ const configMenuItems = [
   { icon: Globe, label: "平台配置", path: "/config/platforms" },
   { icon: Activity, label: "采集管理", path: "/config/collection" },
   { icon: Clock, label: "定时采集", path: "/config/scheduler" },
+  { icon: ScanSearch, label: "监控关键词", path: "/config/monitor-keywords" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
