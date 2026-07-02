@@ -1,0 +1,57 @@
+name: Refresh Binance Square Cookie
+
+# Refreshes the 币安广场 AWS WAF cookie into the production DB (sysConfigs) every 2h. Uses a GitHub-hosted
+# runner (has Chromium) + a minimal-privilege Service Account (roles/cloudsql.client) via cloud-sql-proxy,
+# writing as a scoped MySQL user (cookie_writer, SELECT/INSERT/UPDATE on sysConfigs only). No public DB
+# exposure, no root password. Cookie TTL is 3h, so 2h cadence leaves ~1h buffer.
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: refresh-binance-cookie
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.4.1
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium (matching playwright-core)
+        run: pnpm exec playwright-core install --with-deps chromium
+
+      - name: Start Cloud SQL Proxy (minimal-privilege SA)
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          curl -sSL -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.0/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          printf '%s' "$GCP_SA_KEY" > /tmp/sa-key.json
+          ./cloud-sql-proxy gen-lang-client-0869327408:asia-northeast1:geo-system-db \
+            --port 3307 --credentials-file=/tmp/sa-key.json &
+          # wait for the proxy to accept connections
+          for i in $(seq 1 20); do (echo > /dev/tcp/127.0.0.1/3307) 2>/dev/null && break; sleep 1; done
+
+      - name: Refresh cookie
+        env:
+          # scoped user (cookie_writer) — password is a GitHub secret; hex, URL-safe
+          DATABASE_URL: mysql://cookie_writer:${{ secrets.DB_PASSWORD }}@127.0.0.1:3307/geo_system
+        run: pnpm exec tsx refresh-binance-cookie.ts
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/sa-key.json

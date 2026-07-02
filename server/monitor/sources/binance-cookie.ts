@@ -52,10 +52,12 @@ export async function refreshCookieViaBrowser(): Promise<{ ok: boolean; error?: 
   let browser: any;
   try {
     const pw: any = await import("playwright-core");
+    // Use an explicit executable if given (local dev), else let playwright-core resolve the browser it
+    // installed via `playwright-core install chromium` (CI). No `channel` — that wouldn't find it.
     const executablePath = process.env.BINANCE_CHROMIUM_PATH || undefined;
     browser = await pw.chromium.launch({
       headless: true,
-      ...(executablePath ? { executablePath } : { channel: "chromium" }),
+      ...(executablePath ? { executablePath } : {}),
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
     const ctx = await browser.newContext({ userAgent: BINANCE_UA, locale: "zh-CN" });
