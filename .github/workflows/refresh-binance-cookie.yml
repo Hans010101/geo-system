@@ -34,24 +34,29 @@ jobs:
       - name: Install Chromium (matching playwright-core)
         run: pnpm exec playwright-core install --with-deps chromium
 
-      - name: Start Cloud SQL Proxy (minimal-privilege SA)
+      # Proxy + refresh MUST run in ONE step: a `&` background process from a prior step does NOT
+      # reliably survive into the next step's fresh shell → the refresh script hit
+      # ECONNREFUSED 127.0.0.1:3307 on its first query (root cause of the stale-cookie failures).
+      - name: Start proxy + refresh cookie
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          # scoped user (cookie_writer) — password is a GitHub secret; hex, URL-safe
+          DATABASE_URL: mysql://cookie_writer:${{ secrets.DB_PASSWORD }}@127.0.0.1:3307/geo_system
         run: |
+          set -euo pipefail
           curl -sSL -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.0/cloud-sql-proxy.linux.amd64
           chmod +x cloud-sql-proxy
           printf '%s' "$GCP_SA_KEY" > /tmp/sa-key.json
           ./cloud-sql-proxy gen-lang-client-0869327408:asia-northeast1:geo-system-db \
             --port 3307 --credentials-file=/tmp/sa-key.json &
-          # wait for the proxy to accept connections
-          for i in $(seq 1 20); do (echo > /dev/tcp/127.0.0.1/3307) 2>/dev/null && break; sleep 1; done
-
-      - name: Refresh cookie
-        env:
-          # scoped user (cookie_writer) — password is a GitHub secret; hex, URL-safe
-          DATABASE_URL: mysql://cookie_writer:${{ secrets.DB_PASSWORD }}@127.0.0.1:3307/geo_system
-        run: pnpm exec tsx refresh-binance-cookie.ts
-
-      - name: Cleanup
-        if: always()
-        run: rm -f /tmp/sa-key.json
+          PROXY_PID=$!
+          trap 'kill "$PROXY_PID" 2>/dev/null || true; rm -f /tmp/sa-key.json' EXIT
+          # wait (up to 30s) for the proxy to actually accept connections; fail loudly if it never does
+          ready=0
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/3307) 2>/dev/null; then ready=1; break; fi
+            kill -0 "$PROXY_PID" 2>/dev/null || { echo "cloud-sql-proxy exited early"; exit 1; }
+            sleep 1
+          done
+          [ "$ready" = "1" ] || { echo "cloud-sql-proxy not ready after 30s"; exit 1; }
+          pnpm exec tsx refresh-binance-cookie.ts

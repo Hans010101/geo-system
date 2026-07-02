@@ -53,6 +53,43 @@ export function hasCJK(s: string): boolean {
   return /[一-鿿]/.test(s || "");
 }
 
+// Language gate for the monitor: keep 中文 + English, drop foreign-dominant posts (币安/Gate 广场是
+//多语言平台,会返回阿拉伯语/日语/韩语等无关内容). Script-share heuristic — no external dep.
+// Conservative: only rejects when a non-CJK/Latin script clearly DOMINATES and there is little
+// zh/en; ambiguous/short text is KEPT (don't over-filter). Known limit: Japanese written mostly in
+// kanji can read as zh (kanji∩hanzi overlap) — acceptable, our domain rarely sees it; kana-heavy JP is caught.
+export function detectContentLang(text: string | null | undefined): { lang: string; allowed: boolean } {
+  const t = text || "";
+  let han = 0, latin = 0, arabic = 0, kana = 0, hangul = 0, thai = 0, cyr = 0, deva = 0, letters = 0;
+  for (const ch of t) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0x4e00 && cp <= 0x9fff) { han++; letters++; }
+    else if ((cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a)) { latin++; letters++; }
+    else if (cp >= 0x600 && cp <= 0x6ff) { arabic++; letters++; }
+    else if (cp >= 0x3040 && cp <= 0x30ff) { kana++; letters++; } // hiragana + katakana
+    else if (cp >= 0xac00 && cp <= 0xd7af) { hangul++; letters++; }
+    else if (cp >= 0xe00 && cp <= 0xe7f) { thai++; letters++; }
+    else if (cp >= 0x400 && cp <= 0x4ff) { cyr++; letters++; }
+    else if (cp >= 0x900 && cp <= 0x97f) { deva++; letters++; }
+  }
+  if (letters < 3) return { lang: "unknown", allowed: true }; // too short to judge → keep
+  // Dominant-script wins. kana/hangul are Japanese/Korean-exclusive (Chinese never uses them), so
+  // han-presence must NOT rescue a kana-heavy post — dominance handles that uniformly.
+  const scripts: [string, number][] = [
+    ["zh", han], ["en", latin], ["arabic", arabic], ["japanese", kana],
+    ["korean", hangul], ["thai", thai], ["cyrillic", cyr], ["devanagari", deva],
+  ];
+  let domName = "unknown", domCnt = 0;
+  for (const [n, cnt] of scripts) if (cnt > domCnt) { domCnt = cnt; domName = n; }
+  const domShare = domCnt / letters;
+  if (domName === "zh" || domName === "en") return { lang: domName, allowed: true };
+  if (domShare > 0.15) return { lang: domName, allowed: false }; // foreign script dominates → drop
+  // no clear dominant foreign script → fall back to any zh/en presence, else keep as unknown
+  if (han / letters >= 0.1) return { lang: "zh", allowed: true };
+  if (latin / letters >= 0.3) return { lang: "en", allowed: true };
+  return { lang: "unknown", allowed: true };
+}
+
 export function domainOf(raw: string): string {
   try {
     return new URL(raw).hostname.toLowerCase().replace(/^www\./, "");

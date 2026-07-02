@@ -8,7 +8,7 @@ import * as budget from "./budget";
 import { enabledSources } from "./sources/registry";
 import type { DiscoveredPost } from "./sources/types";
 import { dispatchHighThreatAlert, sendBriefing, type BriefingItem } from "./notify";
-import { normalizeUrl, sha256, domainOf, hasCJK, log } from "./util";
+import { normalizeUrl, sha256, domainOf, hasCJK, detectContentLang, log } from "./util";
 
 const CONCURRENCY = 3;
 const PER_DOMAIN_MS = 2000;
@@ -84,16 +84,25 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   }
   log.info(`Search done: ${keywords.length} keywords × ${srcs.length} sources → ${discovered.size} unique posts (serperCalls ${serperCalls})`);
 
-  // 2) Drop already-stored (dedup vs DB), cap the batch.
+  // 2) Drop already-stored (dedup vs DB) + non-中英文 (多语言广场会混入阿拉伯语/日语等无关内容), cap the batch.
   const fresh: FreshItem[] = [];
+  const langSkips: Record<string, number> = {};
   for (const [h, v] of Array.from(discovered)) {
     if (await db.getMonitorArticleByUrlHash(h)) continue;
-    fresh.push({ hash: h, post: v.post, normUrl: v.normUrl, matched: Array.from(v.matched) });
+    const p = v.post;
+    const { lang, allowed } = detectContentLang(`${p.title || ""} ${p.fullContent || p.contentSnippet || ""}`);
+    if (!allowed) {
+      langSkips[lang] = (langSkips[lang] || 0) + 1;
+      continue;
+    }
+    fresh.push({ hash: h, post: p, normUrl: v.normUrl, matched: Array.from(v.matched) });
     if (fresh.length >= maxPerCycle) {
       log.warn(`Reached per-cycle cap (${maxPerCycle}); ${discovered.size - fresh.length}+ new posts deferred`);
       break;
     }
   }
+  const langSkipTotal = Object.values(langSkips).reduce((a, b) => a + b, 0);
+  if (langSkipTotal > 0) log.info(`Language filter: skipped ${langSkipTotal} non-中英文 posts ${JSON.stringify(langSkips)}`);
   log.info(`Dedup done: ${fresh.length} new posts to process (cap ${maxPerCycle})`);
 
   const stats: MonitorCycleResult = {

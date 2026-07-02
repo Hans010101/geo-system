@@ -145,12 +145,19 @@ export default function SentimentMonitor() {
               />
               <span className="text-[11px] text-muted-foreground">{schedule?.cronExpression || "0 9,21 * * *"}</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+            <div
+              className="flex items-center gap-2 rounded-lg border px-3 py-1.5"
+              title={
+                "币安广场 WAF cookie 由 GitHub Actions 每 2 小时自动刷新(容器内无 Chromium,无法在线刷新)。" +
+                (bnCookie?.expireAt ? `\n过期时间: ${new Date(bnCookie.expireAt).toLocaleString("zh-CN", { hour12: false })}` : "")
+              }
+            >
               <span className="text-xs text-muted-foreground">币安 cookie</span>
               <Badge variant={bnCookie?.valid ? "default" : "secondary"} className={`text-[10px] ${bnCookie?.valid ? "" : "text-orange-600"}`}>
                 {bnCookie?.valid ? "有效" : "无效/过期"}
               </Badge>
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={refreshCookie.isPending} onClick={() => refreshCookie.mutate()}>
+              <span className="text-[10px] text-muted-foreground">每2h自动刷新</span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={refreshCookie.isPending} onClick={() => refreshCookie.mutate()} title="尝试在线刷新(需 Chromium;生产容器通常不可用,失败属正常)">
                 {refreshCookie.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "刷新"}
               </Button>
             </div>
