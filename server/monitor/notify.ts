@@ -1,0 +1,139 @@
+// Phase 2 push: periodic briefing + high-threat real-time alert. Reuses the existing notification system
+// (dispatchNotification → notificationConfigs channels, which already applies severity threshold, silent
+// hours, and 24h dedup). Both pushes are gated by sysConfigs toggles (default OFF — enable after
+// confirming format on a test channel, so we never auto-push to a production group).
+import * as db from "../db";
+import { dispatchNotification } from "../_core/notification";
+import { SOURCE_PLATFORM_LABELS } from "./sources/registry";
+import { log } from "./util";
+
+const CFG = {
+  briefingEnabled: "monitor_briefing_enabled",
+  briefingMode: "monitor_briefing_mode", // 'every' | 'negative_only'
+  realtimeEnabled: "monitor_realtime_enabled",
+};
+
+export type BriefingItem = {
+  title: string;
+  url: string;
+  sourcePlatform: string;
+  domain: string | null;
+  relevance: string | null;
+  sentimentScore: number | null;
+  threatLevel: string | null;
+};
+
+export async function getPushConfig(): Promise<{ briefingEnabled: boolean; briefingMode: string; realtimeEnabled: boolean }> {
+  const truthy = (v: string | null, d: boolean) => (v == null ? d : v === "true");
+  return {
+    briefingEnabled: truthy(await db.getSysConfig(CFG.briefingEnabled), false),
+    briefingMode: (await db.getSysConfig(CFG.briefingMode)) || "every",
+    realtimeEnabled: truthy(await db.getSysConfig(CFG.realtimeEnabled), false),
+  };
+}
+
+export async function setPushConfig(p: { briefingEnabled?: boolean; briefingMode?: string; realtimeEnabled?: boolean }): Promise<void> {
+  if (p.briefingEnabled !== undefined) await db.setSysConfig(CFG.briefingEnabled, String(p.briefingEnabled));
+  if (p.briefingMode !== undefined) await db.setSysConfig(CFG.briefingMode, p.briefingMode);
+  if (p.realtimeEnabled !== undefined) await db.setSysConfig(CFG.realtimeEnabled, String(p.realtimeEnabled));
+}
+
+const srcLabel = (p: string) => SOURCE_PLATFORM_LABELS[p] || p;
+// flagged = negative (sentiment<=2) or high/medium threat; ranked so high threat + most-negative float up.
+const isFlagged = (i: BriefingItem) => (i.sentimentScore ?? 3) <= 2 || i.threatLevel === "high" || i.threatLevel === "medium";
+const rank = (i: BriefingItem) =>
+  (i.threatLevel === "high" ? 100 : i.threatLevel === "medium" ? 50 : 0) + (i.sentimentScore != null ? (5 - i.sentimentScore) * 5 : 0);
+
+export function buildBriefing(
+  items: BriefingItem[],
+  cycle: { keywords: number; sourceCount: number; newArticles: number },
+  stats: { monthCostUsd: number; total: number }
+): { title: string; content: string } {
+  const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  const pos = items.filter((i) => (i.sentimentScore ?? 3) >= 4).length;
+  const neu = items.filter((i) => (i.sentimentScore ?? 3) === 3).length;
+  const neg = items.filter((i) => (i.sentimentScore ?? 3) <= 2).length;
+  const high = items.filter((i) => i.threatLevel === "high").length;
+  const flagged = items.filter(isFlagged).sort((a, b) => rank(b) - rank(a)).slice(0, 10);
+
+  const L: string[] = [];
+  L.push(`📊 舆情监测简报 · ${now}`);
+  L.push(`本轮扫描 ${cycle.keywords} 关键词 × ${cycle.sourceCount} 信源`);
+  L.push("━━━━━━━━━━━━━━");
+  L.push(`🆕 新发现 ${cycle.newArticles} 篇 | 高威胁 ${high} 篇 | 需复核 ${flagged.length} 篇`);
+  L.push("");
+  L.push(`情绪分布(高相关 ${items.length} 篇):`);
+  L.push(`🟢 正面 ${pos}    🟡 中性 ${neu}    🔴 负面 ${neg}`);
+  if (flagged.length > 0) {
+    L.push("");
+    L.push("⚠️ 需关注:");
+    flagged.forEach((it, i) => {
+      const tag = it.threatLevel === "high" ? "🔴高威胁" : (it.sentimentScore ?? 3) <= 2 ? "🔴负面" : "🟡关注";
+      L.push(`${i + 1}. [${tag}] ${it.title.slice(0, 48)} - ${srcLabel(it.sourcePlatform)}${it.domain ? "/" + it.domain : ""}`);
+      L.push(`   ${it.url}`);
+    });
+  } else {
+    L.push("");
+    L.push("✅ 本轮未发现新增负面");
+  }
+  L.push("━━━━━━━━━━━━━━");
+  L.push(`本月成本 $${stats.monthCostUsd.toFixed(4)} | 累计文章 ${stats.total}`);
+  return { title: `舆情简报 · 新增${cycle.newArticles}/负面${neg}/高威胁${high}`, content: L.join("\n") };
+}
+
+// Returns whether it was actually dispatched (for reporting).
+export async function sendBriefing(items: BriefingItem[], cycle: { keywords: number; sourceCount: number; newArticles: number }): Promise<{ sent: boolean; reason?: string; content?: string }> {
+  const cfg = await getPushConfig();
+  const negOrHigh = items.filter((i) => (i.sentimentScore ?? 3) <= 2 || i.threatLevel === "high").length;
+  const stats = await db.getMonitorStats();
+  const msg = buildBriefing(items, cycle, { monthCostUsd: stats?.monthCostUsd || 0, total: stats?.total || 0 });
+  if (!cfg.briefingEnabled) return { sent: false, reason: "briefing disabled", content: msg.content };
+  if (cfg.briefingMode === "negative_only" && negOrHigh === 0) return { sent: false, reason: "negative_only mode, nothing to report", content: msg.content };
+  await dispatchNotification({ messageType: "batch_summary", title: msg.title, content: msg.content }); // no dedupKey (intentional per-cycle), no severity gating
+  log.info(`Briefing dispatched (high/medium items ${items.length}, neg/high ${negOrHigh})`);
+  return { sent: true, content: msg.content };
+}
+
+// High-threat real-time alert: creates a negative_article alert + dispatches immediately. Deduped by
+// urlHash so the same article never re-alerts. Returns whether an alert was created.
+export async function dispatchHighThreatAlert(a: {
+  url: string;
+  urlHash: string;
+  title: string;
+  domain: string | null;
+  sentimentScore: number | null;
+  summary: string | null;
+}): Promise<{ created: boolean; content?: string }> {
+  const cfg = await getPushConfig();
+  const dedupKey = `negative_article:${a.urlHash}`;
+  const recent = await db.findRecentAlertByDedupKey(dedupKey, 24);
+  if (recent) {
+    log.info(`High-threat alert skipped (dedup) ${a.url}`);
+    return { created: false };
+  }
+  const rule = a.domain ? await db.getMonitorSourceRuleByDomain(a.domain) : undefined;
+  const stanceLabel = rule?.stance === "hostile" ? "敌对" : rule?.stance === "friendly" ? "友好" : "中立";
+  const severity = a.sentimentScore === 1 ? "critical" : "high";
+  const content =
+    `🚨 高威胁舆情预警\n${a.title.slice(0, 100)}\n` +
+    `来源: ${a.domain || "?"}（${stanceLabel}） | 威胁: 高\n` +
+    `${(a.summary || "").slice(0, 300)}\n原文: ${a.url}`;
+  const alertId = await db.createAlert({
+    alertType: "negative_article" as any,
+    severity: severity as any,
+    title: `高威胁舆情: ${a.title.slice(0, 80)}`,
+    description: content.slice(0, 1000),
+    relatedPlatform: a.domain ? a.domain.slice(0, 32) : null,
+    dedupKey,
+  } as any);
+
+  if (cfg.realtimeEnabled) {
+    dispatchNotification({ messageType: "alert", alertId, severity, title: `【高】负面舆情 - ${a.domain || ""}`, content, dedupKey }).catch((e) =>
+      log.warn(`High-threat notify failed: ${e.message}`)
+    );
+    log.info(`High-threat alert created + dispatched ${a.url}`);
+  } else {
+    log.info(`High-threat alert row created (realtime push disabled) ${a.url}`);
+  }
+  return { created: true, content };
+}

@@ -2,6 +2,7 @@ const SEVERITY_LABELS: Record<string, string> = { critical: "紧急", high: "高
 const ALERT_TYPE_LABELS: Record<string, string> = {
   sentiment_drop: "负面回答", fact_missing: "事实错误",
   new_negative_source: "新负面来源", coverage_decline: "覆盖率下降",
+  negative_article: "负面舆情",
 };
 
 export function formatAlertMessage(alert: {

@@ -7,6 +7,7 @@ import { analyzeArticle } from "./analyzer";
 import * as budget from "./budget";
 import { enabledSources } from "./sources/registry";
 import type { DiscoveredPost } from "./sources/types";
+import { dispatchHighThreatAlert, sendBriefing, type BriefingItem } from "./notify";
 import { normalizeUrl, sha256, domainOf, hasCJK, log } from "./util";
 
 const CONCURRENCY = 3;
@@ -26,6 +27,8 @@ export type MonitorCycleResult = {
   fetchCostUsd: number;
   analysisCostUsd: number;
   failed: number;
+  realtimeAlerts: number; // high-threat alerts created this cycle
+  briefingSent: boolean;
   tbs: string;
 };
 
@@ -96,8 +99,10 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   const stats: MonitorCycleResult = {
     keywords: keywords.length, serperCalls, serperBudgetHit, discovered: discovered.size,
     newArticles: fresh.length, inserted: 0, analyzed: 0, engineDist: {}, sourceDist: {},
-    fetchCostUsd: 0, analysisCostUsd: 0, failed: 0, tbs: tbsOverride ?? "auto(d/w)",
+    fetchCostUsd: 0, analysisCostUsd: 0, failed: 0, realtimeAlerts: 0, briefingSent: false,
+    tbs: tbsOverride ?? "auto(d/w)",
   };
+  const briefingItems: BriefingItem[] = []; // relevance high/medium, collected for the briefing
 
   // 3) Fetch (only if the source didn't give fullContent) + analyze + persist.
   const lastByDomain = new Map<string, number>();
@@ -175,7 +180,38 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
           costUsd: analysis?.costUsd != null ? String(analysis.costUsd) : null,
         });
         if (id) stats.inserted++;
-        if (analysis) { stats.analyzed++; stats.analysisCostUsd += analysis.costUsd || 0; }
+        if (analysis) {
+          stats.analyzed++;
+          stats.analysisCostUsd += analysis.costUsd || 0;
+          // Collect high/medium relevance for the briefing (low/irrelevant excluded → no noise).
+          if (analysis.relevance === "high" || analysis.relevance === "medium") {
+            briefingItems.push({
+              title: title || "",
+              url: p.url,
+              sourcePlatform: p.sourcePlatform,
+              domain: domain || null,
+              relevance: analysis.relevance,
+              sentimentScore: analysis.sentimentScore,
+              threatLevel: analysis.threatLevel,
+            });
+          }
+          // High-threat → immediate real-time alert (deduped by urlHash inside).
+          if (analysis.threatLevel === "high") {
+            try {
+              const res = await dispatchHighThreatAlert({
+                url: p.url,
+                urlHash: cur.hash,
+                title: title || "",
+                domain: domain || null,
+                sentimentScore: analysis.sentimentScore,
+                summary: analysis.summary,
+              });
+              if (res.created) stats.realtimeAlerts++;
+            } catch (e: any) {
+              log.error(`High-threat alert failed ${p.url}: ${String(e?.message || e).slice(0, 120)}`);
+            }
+          }
+        }
       } catch (e: any) {
         stats.failed++;
         log.error(`Pipeline item failed ${p.url}: ${String(e?.message || e).slice(0, 160)}`);
@@ -186,6 +222,15 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, fresh.length || 1) }, () => worker()));
   stats.fetchCostUsd = Math.round(stats.fetchCostUsd * 1_000_000) / 1_000_000;
   stats.analysisCostUsd = Math.round(stats.analysisCostUsd * 1_000_000) / 1_000_000;
+
+  // Briefing after the cycle (gated by sysConfig; default OFF until enabled on a test channel).
+  try {
+    const b = await sendBriefing(briefingItems, { keywords: keywords.length, sourceCount: srcs.length, newArticles: stats.inserted });
+    stats.briefingSent = b.sent;
+  } catch (e: any) {
+    log.error(`Briefing dispatch failed: ${String(e?.message || e).slice(0, 160)}`);
+  }
+
   log.info(`Monitor cycle complete: ${JSON.stringify(stats)}`);
   return stats;
 }

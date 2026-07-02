@@ -80,6 +80,11 @@ export default function SentimentMonitor() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const { data: push } = trpc.monitor.getPushConfig.useQuery();
+  const savePush = trpc.monitor.setPushConfig.useMutation({
+    onSuccess: () => { utils.monitor.getPushConfig.invalidate(); toast.success("推送设置已更新"); },
+    onError: (e) => toast.error(e.message),
+  });
   const { data: bnCookie } = trpc.monitor.binanceCookieStatus.useQuery();
   const refreshCookie = trpc.monitor.refreshBinanceCookie.useMutation({
     onSuccess: (r) => {
@@ -235,6 +240,34 @@ export default function SentimentMonitor() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Push settings (admin) — channels + silent hours are in 通知设置 (/config/notifications) */}
+      {isAdmin && (
+        <Card>
+          <CardContent className="p-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <span className="text-sm font-medium">推送设置</span>
+            <label className="flex items-center gap-2 text-xs">
+              <Switch checked={push?.briefingEnabled ?? false} onCheckedChange={(v) => savePush.mutate({ briefingEnabled: v })} />
+              定时简报
+            </label>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">简报模式</span>
+              <Select value={push?.briefingMode || "every"} onValueChange={(v) => savePush.mutate({ briefingMode: v as any })}>
+                <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="every">每轮推送</SelectItem>
+                  <SelectItem value="negative_only">仅有负面时</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <Switch checked={push?.realtimeEnabled ?? false} onCheckedChange={(v) => savePush.mutate({ realtimeEnabled: v })} />
+              高威胁实时预警
+            </label>
+            <span className="text-[11px] text-muted-foreground ml-auto">推送渠道 &amp; 静默时段在「通知设置」配置</span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">

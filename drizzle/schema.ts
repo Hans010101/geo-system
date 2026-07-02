@@ -190,6 +190,7 @@ export const alerts = mysqlTable("alerts", {
     "new_negative_source",
     "coverage_decline",
     "fact_missing",
+    "negative_article",
   ]).notNull(),
   severity: mysqlEnum("severity", ["critical", "high", "medium", "low"]).notNull(),
   title: varchar("title", { length: 256 }).notNull(),

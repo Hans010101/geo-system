@@ -14,6 +14,7 @@ import { formatAlertMessage, formatBatchSummary } from "./_core/senders/template
 import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
 import { refreshCookieViaBrowser, getCookieStatus } from "./monitor/sources/binance-cookie";
+import { getPushConfig, setPushConfig } from "./monitor/notify";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2174,6 +2175,22 @@ const monitorRouter = router({
   // whether in-container refresh works — else refresh externally and it lands in sysConfigs).
   binanceCookieStatus: protectedProcedure.query(async () => getCookieStatus()),
   refreshBinanceCookie: adminProcedure.mutation(async () => refreshCookieViaBrowser()),
+
+  // Phase 2 push config: briefing/realtime toggles + briefing mode (channels + silent hours live in
+  // notificationConfigs, managed at /config/notifications).
+  getPushConfig: protectedProcedure.query(async () => getPushConfig()),
+  setPushConfig: adminProcedure
+    .input(
+      z.object({
+        briefingEnabled: z.boolean().optional(),
+        briefingMode: z.enum(["every", "negative_only"]).optional(),
+        realtimeEnabled: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await setPushConfig(input);
+      return { success: true, ...(await getPushConfig()) };
+    }),
 
   getSchedule: protectedProcedure.query(async () => ({
     enabled: monitorSchedulerState.enabled,
