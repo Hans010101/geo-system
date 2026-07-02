@@ -6,7 +6,7 @@ import { searchNews } from "./search";
 import { fetchArticle } from "./fetch/router";
 import { analyzeArticle } from "./analyzer";
 import * as budget from "./budget";
-import { normalizeUrl, sha256, domainOf, parseSerperDate, log } from "./util";
+import { normalizeUrl, sha256, domainOf, parseSerperDate, hasCJK, log } from "./util";
 
 const CONCURRENCY = 3; // gentle on external sites
 const PER_DOMAIN_MS = 2000; // robots politeness: ≥2s between hits to the same domain (our L1 fetch)
@@ -35,7 +35,9 @@ function toFetchMethod(engine: string): "self" | "firecrawl" | "snippet_only" | 
 }
 
 export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorCycleResult> {
-  const tbs = opts?.tbs ?? "qdr:d";
+  // Per-keyword locale + freshness: CJK keywords → Serper gl=cn/hl=zh, else gl=us/hl=en; core (priority≥8)
+  // → qdr:d (fresh), broader keywords → qdr:w (coverage). opts.tbs, if given, overrides for all.
+  const tbsOverride = opts?.tbs;
   await budget.beginCycle(); // load limits + counters (applies monthly reset / picks up limit changes)
   const maxPerCycle = budget.maxArticlesPerCycle();
   const keywords = await db.listMonitorKeywords(true);
@@ -54,7 +56,14 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
       break;
     }
     try {
-      const items = await searchNews(kw.keyword, { tbs, num: 10 });
+      const zh = hasCJK(kw.keyword);
+      const kwTbs = tbsOverride ?? (kw.priority >= 8 ? "qdr:d" : "qdr:w");
+      const items = await searchNews(kw.keyword, {
+        tbs: kwTbs,
+        num: 20,
+        gl: zh ? "cn" : "us",
+        hl: zh ? "zh-cn" : "en",
+      });
       serperCalls++;
       for (const it of items) {
         const normUrl = normalizeUrl(it.url);
@@ -104,7 +113,7 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
     fetchCostUsd: 0,
     analysisCostUsd: 0,
     failed: 0,
-    tbs,
+    tbs: tbsOverride ?? "auto(d/w)",
   };
 
   // 3) Fetch (router) + analyze + persist, with a worker pool + per-domain politeness.
@@ -161,6 +170,7 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
           matchedKeywords: cur.matched,
           sentimentScore: analysis?.sentimentScore ?? null,
           relevance: analysis?.relevance ?? null,
+          relevanceReason: analysis?.relevanceReason ?? null,
           threatLevel: analysis?.threatLevel ?? null,
           analysisSummary: analysis?.summary ?? null,
           analyzedAt: analysis ? Date.now() : null,
@@ -185,4 +195,30 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   stats.analysisCostUsd = Math.round(stats.analysisCostUsd * 1_000_000) / 1_000_000;
   log.info(`Monitor cycle complete: ${JSON.stringify(stats)}`);
   return stats;
+}
+
+// Re-run the analyzer on an already-stored article (using its saved content) under the current prompt.
+// Used by the reanalyze tRPC endpoint and the backfill script — no re-fetch, so no fetch cost.
+export async function reanalyzeArticle(id: number): Promise<boolean> {
+  const a = await db.getMonitorArticleById(id);
+  if (!a) return false;
+  const analysis = await analyzeArticle({
+    url: a.url,
+    title: a.title,
+    contentMd: a.contentMd || "",
+    snippet: "",
+    fetchStatus: (a.fetchStatus as any) || "full",
+  });
+  await db.updateMonitorArticle(id, {
+    sentimentScore: analysis.sentimentScore,
+    relevance: analysis.relevance,
+    relevanceReason: analysis.relevanceReason,
+    threatLevel: analysis.threatLevel,
+    analysisSummary: analysis.summary,
+    analyzedAt: Date.now(),
+    promptTokens: analysis.promptTokens,
+    completionTokens: analysis.completionTokens,
+    costUsd: analysis.costUsd != null ? String(analysis.costUsd) : null,
+  });
+  return true;
 }

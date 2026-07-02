@@ -105,6 +105,14 @@ export default function MonitorArticleDetailSheet({
                       </p>
                     </div>
                   </div>
+                  {detail.relevanceReason && (
+                    <div className="rounded-lg border-l-[3px] border-l-primary/40 bg-primary/5 px-4 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">相关性判定：</span>
+                        {detail.relevanceReason}
+                      </p>
+                    </div>
+                  )}
                   {detail.analysisSummary && (
                     <div className="bg-muted/40 rounded-lg px-4 py-3">
                       <p className="text-sm leading-[1.6] whitespace-pre-wrap">{detail.analysisSummary}</p>

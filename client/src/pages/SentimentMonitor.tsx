@@ -30,7 +30,7 @@ export default function SentimentMonitor() {
   const [page, setPage] = useState(0);
   const [threat, setThreat] = useState<string>("all");
   const [stance, setStance] = useState<string>("all");
-  const [relevance, setRelevance] = useState<string>("all");
+  const [relevance, setRelevance] = useState<string>("focus"); // default: 高+中 only
   const [range, setRange] = useState<string>("all");
   const [detailId, setDetailId] = useState<number | null>(null);
 
@@ -43,7 +43,7 @@ export default function SentimentMonitor() {
       pageSize: PAGE_SIZE,
       threatLevel: threat === "all" ? undefined : (threat as any),
       stance: stance === "all" ? undefined : (stance as any),
-      relevance: relevance === "all" ? undefined : (relevance as any),
+      ...(relevance === "focus" ? { focus: true } : relevance === "all" ? {} : { relevance: relevance as any }),
       startTime,
     };
   }, [page, threat, stance, relevance, range]);
@@ -197,7 +197,7 @@ export default function SentimentMonitor() {
         <FilterSelect value={stance} onChange={(v) => { setStance(v); resetPage(); }} placeholder="信源立场"
           options={[["all", "全部立场"], ["hostile", "敌对"], ["neutral", "中立"], ["friendly", "友好"]]} />
         <FilterSelect value={relevance} onChange={(v) => { setRelevance(v); resetPage(); }} placeholder="相关性"
-          options={[["all", "全部相关性"], ["high", "高相关"], ["medium", "中相关"], ["low", "低相关"], ["irrelevant", "无关"]]} />
+          options={[["focus", "重点(高+中)"], ["all", "全部相关性"], ["high", "高相关"], ["medium", "中相关"], ["low", "低相关"], ["irrelevant", "无关"]]} />
         <FilterSelect value={range} onChange={(v) => { setRange(v); resetPage(); }} placeholder="时间范围"
           options={[["all", "全部时间"], ["24h", "近 24 小时"], ["7d", "近 7 天"]]} />
       </div>

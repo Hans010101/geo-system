@@ -49,6 +49,10 @@ export function urlHash(normalizedUrl: string): string {
   return sha256(normalizeUrl(normalizedUrl));
 }
 
+export function hasCJK(s: string): boolean {
+  return /[一-鿿]/.test(s || "");
+}
+
 export function domainOf(raw: string): string {
   try {
     return new URL(raw).hostname.toLowerCase().replace(/^www\./, "");

@@ -11,7 +11,7 @@ import { calcCostUsd, detectProviderFromBaseUrl } from "@shared/llm-pricing";
 import { ENV } from "./_core/env";
 import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
-import { runMonitorCycle, type MonitorCycleResult } from "./monitor/pipeline";
+import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
 
 // ==================== Structured Logger ====================
@@ -2051,14 +2051,14 @@ const monitorSchedulerState = {
 let monitorCycleRunning = false;
 
 // Single-flight guard so manual triggers and cron never overlap.
-async function runMonitorCycleGuarded(tbs = "qdr:d"): Promise<MonitorCycleResult | null> {
+async function runMonitorCycleGuarded(tbs?: string): Promise<MonitorCycleResult | null> {
   if (monitorCycleRunning) {
     log.warn("Monitor cycle already running; skipping this trigger");
     return null;
   }
   monitorCycleRunning = true;
   try {
-    const res = await runMonitorCycle({ tbs });
+    const res = await runMonitorCycle(tbs ? { tbs } : undefined);
     monitorSchedulerState.lastRunAt = Date.now();
     await db.upsertSchedulerConfig({ monitorLastRunAt: monitorSchedulerState.lastRunAt }).catch(() => {});
     return res;
@@ -2082,7 +2082,7 @@ async function initMonitorScheduler() {
       monitorSchedulerState.cronExpression,
       () => {
         log.info("Scheduled monitor cycle triggered");
-        runMonitorCycleGuarded("qdr:d").catch((e) => log.error(`Scheduled monitor cycle failed: ${e.message}`));
+        runMonitorCycleGuarded().catch((e) => log.error(`Scheduled monitor cycle failed: ${e.message}`));
       },
       { timezone: "Asia/Shanghai" }
     );
@@ -2118,6 +2118,7 @@ const monitorRouter = router({
           threatLevel: z.enum(["high", "medium", "low", "none"]).optional(),
           stance: z.enum(["hostile", "neutral", "friendly"]).optional(),
           relevance: z.enum(["high", "medium", "low", "irrelevant"]).optional(),
+          focus: z.boolean().optional(), // default view: high+medium only
           startTime: z.number().optional(),
           endTime: z.number().optional(),
         })
@@ -2130,6 +2131,7 @@ const monitorRouter = router({
         threatLevel: input?.threatLevel,
         stance: input?.stance,
         relevance: input?.relevance,
+        focus: input?.focus,
         startTime: input?.startTime,
         endTime: input?.endTime,
         limit: pageSize,
@@ -2155,9 +2157,14 @@ const monitorRouter = router({
 
   // admin+ operations
   triggerCycle: adminProcedure.mutation(async () => {
-    const res = await runMonitorCycleGuarded("qdr:d");
+    const res = await runMonitorCycleGuarded();
     if (!res) return { success: false, running: true, message: "已有一轮监控正在运行" };
     return { success: true, running: false, result: res };
+  }),
+
+  reanalyzeArticle: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    const ok = await reanalyzeArticle(input.id);
+    return { success: ok };
   }),
 
   getSchedule: protectedProcedure.query(async () => ({

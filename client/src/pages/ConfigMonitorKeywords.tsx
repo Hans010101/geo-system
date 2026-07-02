@@ -108,8 +108,10 @@ export default function ConfigMonitorKeywords() {
                   <Select value={draft.keywordGroup} onValueChange={(v) => setDraft({ ...draft, keywordGroup: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="syc">syc（孙宇晨）</SelectItem>
-                      <SelectItem value="tron">tron（波场）</SelectItem>
+                      <SelectItem value="syc">syc（孙宇晨核心）</SelectItem>
+                      <SelectItem value="tron">tron（波场项目）</SelectItem>
+                      <SelectItem value="syc-rel">syc-rel（关联实体/事件）</SelectItem>
+                      <SelectItem value="intl">intl（英文舆情）</SelectItem>
                       <SelectItem value="competitor">competitor（竞品）</SelectItem>
                     </SelectContent>
                   </Select>

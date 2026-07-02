@@ -11,14 +11,33 @@ const conn = await createConnection(DATABASE_URL);
 
 // --- Keywords (8) ---
 const KEYWORDS = [
+  // 孙宇晨核心 (syc) — 中文走 gl=cn, 英文走 gl=us;priority>=8 → qdr:d(新鲜), 其余 → qdr:w(覆盖)
   { keyword: "孙宇晨", keywordGroup: "syc", priority: 10 },
-  { keyword: "孙宇晨 SEC", keywordGroup: "syc", priority: 8 },
-  { keyword: "波场", keywordGroup: "tron", priority: 9 },
-  { keyword: "TRON TRX", keywordGroup: "tron", priority: 7 },
-  { keyword: "Justin Sun", keywordGroup: "syc", priority: 8 },
-  { keyword: "Justin Sun TRON", keywordGroup: "tron", priority: 7 },
-  { keyword: "TUSD 孙宇晨", keywordGroup: "syc", priority: 6 },
-  { keyword: "WLFI Justin Sun", keywordGroup: "syc", priority: 6 },
+  { keyword: "Justin Sun", keywordGroup: "syc", priority: 10 },
+  { keyword: "孙宇晨 波场", keywordGroup: "syc", priority: 9 },
+  { keyword: "孙宇晨 SEC", keywordGroup: "syc", priority: 7 },
+  { keyword: "孙宇晨 起诉", keywordGroup: "syc", priority: 8 },
+  { keyword: "孙宇晨 诉讼", keywordGroup: "syc", priority: 8 },
+  { keyword: "Justin Sun lawsuit", keywordGroup: "syc", priority: 8 },
+  { keyword: "Justin Sun SEC", keywordGroup: "syc", priority: 7 },
+  // 波场项目 (tron)
+  { keyword: "波场 TRON", keywordGroup: "tron", priority: 9 },
+  { keyword: "波场", keywordGroup: "tron", priority: 8 },
+  { keyword: "TRON TRX", keywordGroup: "tron", priority: 8 },
+  { keyword: "TRX 波场", keywordGroup: "tron", priority: 7 },
+  { keyword: "波场链", keywordGroup: "tron", priority: 6 },
+  { keyword: "USDD 稳定币", keywordGroup: "tron", priority: 6 },
+  // 关联实体/事件 (syc-rel) — 真实舆情高发区
+  { keyword: "孙宇晨 火币", keywordGroup: "syc-rel", priority: 8 },
+  { keyword: "孙宇晨 HTX", keywordGroup: "syc-rel", priority: 8 },
+  { keyword: "孙宇晨 特朗普", keywordGroup: "syc-rel", priority: 8 },
+  { keyword: "Justin Sun Trump", keywordGroup: "syc-rel", priority: 8 },
+  { keyword: "Justin Sun WLFI", keywordGroup: "syc-rel", priority: 7 },
+  { keyword: "孙宇晨 洗钱", keywordGroup: "syc-rel", priority: 8 },
+  { keyword: "Justin Sun fraud", keywordGroup: "syc-rel", priority: 8 },
+  // 英文舆情 (intl)
+  { keyword: "Justin Sun crypto", keywordGroup: "intl", priority: 6 },
+  { keyword: "Tron founder", keywordGroup: "intl", priority: 6 },
 ];
 const [existingKw] = await conn.query("SELECT keyword FROM monitor_keywords");
 const have = new Set(existingKw.map((r) => r.keyword));

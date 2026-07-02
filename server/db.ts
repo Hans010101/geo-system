@@ -1244,6 +1244,7 @@ export async function listMonitorArticles(filters?: {
   threatLevel?: string;
   stance?: string;
   relevance?: string;
+  focus?: boolean; // default view: only high+medium (hide low/irrelevant noise)
   startTime?: number;
   endTime?: number;
   limit?: number;
@@ -1254,6 +1255,7 @@ export async function listMonitorArticles(filters?: {
   const conditions = [];
   if (filters?.threatLevel) conditions.push(eq(monitorArticles.threatLevel, filters.threatLevel as any));
   if (filters?.relevance) conditions.push(eq(monitorArticles.relevance, filters.relevance as any));
+  else if (filters?.focus) conditions.push(inArray(monitorArticles.relevance, ["high", "medium"] as any));
   if (filters?.startTime) conditions.push(gte(monitorArticles.firstSeenAt, filters.startTime));
   if (filters?.endTime) conditions.push(lte(monitorArticles.firstSeenAt, filters.endTime));
   if (filters?.stance) conditions.push(eq(monitorSourceRules.stance, filters.stance as any));
@@ -1272,6 +1274,7 @@ export async function listMonitorArticles(filters?: {
     matchedKeywords: monitorArticles.matchedKeywords,
     sentimentScore: monitorArticles.sentimentScore,
     relevance: monitorArticles.relevance,
+    relevanceReason: monitorArticles.relevanceReason,
     threatLevel: monitorArticles.threatLevel,
     analysisSummary: monitorArticles.analysisSummary,
     analyzedAt: monitorArticles.analyzedAt,

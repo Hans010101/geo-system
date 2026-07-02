@@ -386,6 +386,7 @@ export const monitorArticles = mysqlTable(
     matchedKeywords: json("matchedKeywords"), // string[] of keywords that surfaced this url
     sentimentScore: int("sentimentScore"), // 1-5, DeepSeek
     relevance: mysqlEnum("relevance", ["high", "medium", "low", "irrelevant"]),
+    relevanceReason: varchar("relevanceReason", { length: 512 }), // one-line why this relevance level (核查用)
     threatLevel: mysqlEnum("threatLevel", ["high", "medium", "low", "none"]),
     analysisSummary: text("analysisSummary"),
     analyzedAt: bigint("analyzedAt", { mode: "number" }),

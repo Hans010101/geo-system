@@ -23,11 +23,13 @@ async function getSerper(): Promise<{ apiKey: string; base: string }> {
 // Search the news vertical for a keyword. tbs e.g. 'qdr:d' (past day) drives freshness.
 export async function searchNews(
   keyword: string,
-  opts?: { tbs?: string; num?: number }
+  opts?: { tbs?: string; num?: number; gl?: string; hl?: string }
 ): Promise<SerperNewsItem[]> {
   const { apiKey, base } = await getSerper();
   const body: Record<string, unknown> = { q: keyword, num: opts?.num ?? 10 };
   if (opts?.tbs) body.tbs = opts.tbs;
+  if (opts?.gl) body.gl = opts.gl; // country: 'cn' for 中文舆情, 'us' for 英文
+  if (opts?.hl) body.hl = opts.hl; // ui language: 'zh-cn' / 'en'
   const resp = await fetch(`${base}/news`, {
     method: "POST",
     headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
