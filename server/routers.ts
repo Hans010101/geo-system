@@ -15,6 +15,11 @@ import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./mo
 import * as monitorBudget from "./monitor/budget";
 import { refreshCookieViaBrowser, getCookieStatus } from "./monitor/sources/binance-cookie";
 import { getPushConfig, setPushConfig } from "./monitor/notify";
+import {
+  getSourcePenetration,
+  getArticlePenetration,
+  getCitationSourceActivity,
+} from "./monitor/penetration";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2254,6 +2259,22 @@ const monitorRouter = router({
     await db.deleteMonitorKeyword(input.id);
     return { success: true };
   }),
+
+  // ===== Phase 3 GEO 穿透联动: 舆情 domain × AI 引用 domain 双向关联 =====
+  // 信源级穿透矩阵: 每个被监控信源的舆情活跃度 × AI 引用覆盖 × 风险分级。
+  sourcePenetration: protectedProcedure
+    .input(z.object({ days: z.number().min(1).max(365).optional() }).optional())
+    .query(async ({ input }) => getSourcePenetration({ days: input?.days })),
+
+  // 文章级穿透: 某篇文章的信源是否已被 AI 引用、被哪些平台/问题引用、AI 传播风险。
+  articlePenetration: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => getArticlePenetration(input.id)),
+
+  // 反向视角: AI 正在引用的信源,舆情侧最近在发什么(尤其负面)。
+  citationSourceActivity: protectedProcedure
+    .input(z.object({ limit: z.number().min(1).max(200).optional() }).optional())
+    .query(async ({ input }) => getCitationSourceActivity({ limit: input?.limit })),
 });
 
 // ==================== App Router ====================

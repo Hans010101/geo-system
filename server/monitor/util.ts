@@ -61,6 +61,23 @@ export function domainOf(raw: string): string {
   }
 }
 
+// Canonical domain key used to JOIN the two sides of the GEO-penetration analysis:
+// monitor_articles.domain (already clean via domainOf) and citations.domain (DIRTY — a mix of
+// real hostnames from explicit URLs and descriptive source names from implicit LLM citations).
+// Rules: lowercase, strip scheme, keep only the host (drop path/query), strip port, strip leading "www.".
+//   "https://www.Bloomberg.com/news/x" / "BLOOMBERG.COM:443" / "www.bloomberg.com" -> "bloomberg.com"
+//   descriptive source names ("彭博社", "Reuters") normalize to lowercase text and simply won't match a hostname.
+// IMPORTANT: the SQL side (server/monitor/penetration.ts NORM_SQL) MUST stay byte-for-byte equivalent to this.
+export function normalizeDomain(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let s = String(raw).trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, ""); // strip scheme (http://, https://, implicit://, ...)
+  s = s.split("/")[0]; // host only — drop path/query/fragment
+  s = s.split(":")[0]; // drop port
+  s = s.replace(/^www\./, ""); // drop leading www.
+  return s.trim();
+}
+
 // Best-effort parse of a Serper date string ("3 hours ago", "Mar 6, 2026", "2 days ago") → epoch ms.
 export function parseSerperDate(s: string | null | undefined, now = Date.now()): number | null {
   if (!s) return null;

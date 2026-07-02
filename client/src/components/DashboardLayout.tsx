@@ -38,6 +38,7 @@ import {
   Bell as BellIcon,
   Radar,
   ScanSearch,
+  Network,
 } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -54,6 +55,7 @@ const menuItems = [
   { icon: FileBarChart, label: "周报", path: "/reports" },
   { icon: Bell, label: "预警中心", path: "/alerts" },
   { icon: Radar, label: "舆情监控", path: "/sentiment-monitor" },
+  { icon: Network, label: "信源穿透", path: "/sentiment-monitor/penetration" },
 ];
 
 const configMenuItems = [

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useRole } from "@/hooks/useRole";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Network,
 } from "lucide-react";
 import { toast } from "sonner";
 import MonitorArticleDetailSheet from "@/components/MonitorArticleDetailSheet";
@@ -108,6 +110,12 @@ export default function SentimentMonitor() {
           <p className="text-muted-foreground text-sm mt-1">
             自动发现、抓取、分析涉及孙宇晨 / 波场的新文章（Serper 发现 → 自建/Firecrawl 抓取 → DeepSeek 分析）。
           </p>
+          <Link
+            href="/sentiment-monitor/penetration"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1.5"
+          >
+            <Network className="h-4 w-4" /> 信源穿透 · GEO 引用联动 →
+          </Link>
         </div>
         {isAdmin && (
           <div className="flex items-center gap-3 flex-wrap">

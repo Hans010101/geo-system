@@ -11,6 +11,10 @@ import {
   FETCH_ENGINE_LABELS,
   SENTIMENT_MONITOR_COLORS,
 } from "@/lib/monitorLabels";
+import { PLATFORM_LABELS, PLATFORM_COLORS } from "@shared/geo-types";
+
+const platLabel = (p: string) => (PLATFORM_LABELS as Record<string, string>)[p] || p;
+const platColor = (p: string) => (PLATFORM_COLORS as Record<string, string>)[p] || "#64748b";
 
 export default function MonitorArticleDetailSheet({
   articleId,
@@ -24,6 +28,11 @@ export default function MonitorArticleDetailSheet({
   const { data: detail, isLoading } = trpc.monitor.getArticle.useQuery(
     { id: articleId! },
     { enabled: !!articleId }
+  );
+  // Phase 3 GEO 穿透: is this article's source already cited by AI platforms?
+  const { data: pen } = trpc.monitor.articlePenetration.useQuery(
+    { id: articleId! },
+    { enabled: !!articleId && open }
   );
   const [showFullText, setShowFullText] = useState(false);
 
@@ -116,6 +125,64 @@ export default function MonitorArticleDetailSheet({
                   {detail.analysisSummary && (
                     <div className="bg-muted/40 rounded-lg px-4 py-3">
                       <p className="text-sm leading-[1.6] whitespace-pre-wrap">{detail.analysisSummary}</p>
+                    </div>
+                  )}
+
+                  {/* Phase 3: GEO 穿透联动 —— 此信源是否已被 AI 平台引用 */}
+                  {pen && (
+                    <div
+                      className={`rounded-lg border px-4 py-3 ${
+                        pen.cited
+                          ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/20"
+                          : "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-sm font-semibold">GEO 关联 · AI 引用穿透</span>
+                        {pen.propagationRisk === "high" && (
+                          <Badge className="text-[10px] text-white border-0 bg-red-600">传播风险高</Badge>
+                        )}
+                        {pen.propagationRisk === "medium" && (
+                          <Badge className="text-[10px] text-white border-0 bg-orange-500">传播风险中</Badge>
+                        )}
+                      </div>
+                      {pen.cited ? (
+                        <>
+                          <p className="text-sm text-red-700 dark:text-red-300">
+                            ⚠️ 此信源(<span className="font-medium">{pen.domain}</span>)已被{" "}
+                            <span className="font-bold">{pen.aiPlatforms}</span> 个 AI 平台引用,累计 {pen.citationCount} 次
+                            {pen.sameDomainArticles > 1 ? ` · 本域舆情 ${pen.sameDomainArticles} 篇` : ""}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {pen.platformList.map((p) => (
+                              <span
+                                key={p}
+                                className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] text-white"
+                                style={{ backgroundColor: platColor(p) }}
+                              >
+                                {platLabel(p)}
+                              </span>
+                            ))}
+                          </div>
+                          {pen.questions.length > 0 && (
+                            <div className="mt-2.5">
+                              <p className="text-[11px] text-muted-foreground mb-1">被引用于以下 AI 回答问题:</p>
+                              <ul className="space-y-0.5">
+                                {pen.questions.slice(0, 5).map((q, i) => (
+                                  <li key={i} className="text-xs text-foreground/80 leading-snug">
+                                    · [{platLabel(q.platform)}] {q.questionText}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                          ✅ 此信源({pen.domain || "—"})暂未被任何 AI 平台引用
+                          {pen.domain ? "" : "(无有效域名)"}
+                        </p>
+                      )}
                     </div>
                   )}
                   {matched.length > 0 && (

@@ -5,7 +5,8 @@
 import * as db from "../db";
 import { dispatchNotification } from "../_core/notification";
 import { SOURCE_PLATFORM_LABELS } from "./sources/registry";
-import { log } from "./util";
+import { log, normalizeDomain } from "./util";
+import { getDomainAiCitation, getSourcePenetration } from "./penetration";
 
 const CFG = {
   briefingEnabled: "monitor_briefing_enabled",
@@ -47,7 +48,9 @@ const rank = (i: BriefingItem) =>
 export function buildBriefing(
   items: BriefingItem[],
   cycle: { keywords: number; sourceCount: number; newArticles: number },
-  stats: { monthCostUsd: number; total: number }
+  stats: { monthCostUsd: number; total: number },
+  // Phase 3: normalized domain -> # of AI platforms already citing it (for "已入AI" annotation).
+  aiReach?: Map<string, number>
 ): { title: string; content: string } {
   const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
   const pos = items.filter((i) => (i.sentimentScore ?? 3) >= 4).length;
@@ -69,7 +72,9 @@ export function buildBriefing(
     L.push("⚠️ 需关注:");
     flagged.forEach((it, i) => {
       const tag = it.threatLevel === "high" ? "🔴高威胁" : (it.sentimentScore ?? 3) <= 2 ? "🔴负面" : "🟡关注";
-      L.push(`${i + 1}. [${tag}] ${it.title.slice(0, 48)} - ${srcLabel(it.sourcePlatform)}${it.domain ? "/" + it.domain : ""}`);
+      const reach = aiReach?.get(normalizeDomain(it.domain)) ?? 0;
+      const penTag = reach > 0 ? ` · 🔴已影响${reach}个AI平台` : "";
+      L.push(`${i + 1}. [${tag}] ${it.title.slice(0, 48)} - ${srcLabel(it.sourcePlatform)}${it.domain ? "/" + it.domain : ""}${penTag}`);
       L.push(`   ${it.url}`);
     });
   } else {
@@ -86,7 +91,14 @@ export async function sendBriefing(items: BriefingItem[], cycle: { keywords: num
   const cfg = await getPushConfig();
   const negOrHigh = items.filter((i) => (i.sentimentScore ?? 3) <= 2 || i.threatLevel === "high").length;
   const stats = await db.getMonitorStats();
-  const msg = buildBriefing(items, cycle, { monthCostUsd: stats?.monthCostUsd || 0, total: stats?.total || 0 });
+  // Phase 3: one query → map of monitored domain → # AI platforms already citing it, to flag amplified sources.
+  const aiReach = new Map<string, number>();
+  try {
+    for (const s of await getSourcePenetration()) if (s.aiPlatforms > 0) aiReach.set(s.domain, s.aiPlatforms);
+  } catch (e: any) {
+    log.warn(`Briefing penetration lookup failed: ${e?.message || e}`);
+  }
+  const msg = buildBriefing(items, cycle, { monthCostUsd: stats?.monthCostUsd || 0, total: stats?.total || 0 }, aiReach);
   if (!cfg.briefingEnabled) return { sent: false, reason: "briefing disabled", content: msg.content };
   if (cfg.briefingMode === "negative_only" && negOrHigh === 0) return { sent: false, reason: "negative_only mode, nothing to report", content: msg.content };
   await dispatchNotification({ messageType: "batch_summary", title: msg.title, content: msg.content }); // no dedupKey (intentional per-cycle), no severity gating
@@ -113,11 +125,23 @@ export async function dispatchHighThreatAlert(a: {
   }
   const rule = a.domain ? await db.getMonitorSourceRuleByDomain(a.domain) : undefined;
   const stanceLabel = rule?.stance === "hostile" ? "敌对" : rule?.stance === "friendly" ? "友好" : "中立";
-  const severity = a.sentimentScore === 1 ? "critical" : "high";
+  // Phase 3: is this source already feeding AI answers? If so this negative can propagate into AI output.
+  let pen = { aiPlatforms: 0, platformList: [] as string[], citationCount: 0, domain: "" };
+  try {
+    if (a.domain) pen = await getDomainAiCitation(a.domain);
+  } catch (e: any) {
+    log.warn(`High-threat penetration lookup failed: ${e?.message || e}`);
+  }
+  const amplified = pen.aiPlatforms > 0;
+  // A negative from an AI-cited source is the worst case → escalate to critical.
+  const severity = a.sentimentScore === 1 || amplified ? "critical" : "high";
+  const penLine = amplified
+    ? `\n🔴 GEO 穿透: 此信源已被 ${pen.aiPlatforms} 个 AI 平台引用（${pen.platformList.slice(0, 6).join("/")}${pen.platformList.length > 6 ? "…" : ""}，累计 ${pen.citationCount} 次）— 负面正被 AI 放大`
+    : "";
   const content =
     `🚨 高威胁舆情预警\n${a.title.slice(0, 100)}\n` +
-    `来源: ${a.domain || "?"}（${stanceLabel}） | 威胁: 高\n` +
-    `${(a.summary || "").slice(0, 300)}\n原文: ${a.url}`;
+    `来源: ${a.domain || "?"}（${stanceLabel}） | 威胁: 高${amplified ? " | ⚠️已入AI引用" : ""}\n` +
+    `${(a.summary || "").slice(0, 300)}${penLine}\n原文: ${a.url}`;
   const alertId = await db.createAlert({
     alertType: "negative_article" as any,
     severity: severity as any,
@@ -128,7 +152,8 @@ export async function dispatchHighThreatAlert(a: {
   } as any);
 
   if (cfg.realtimeEnabled) {
-    dispatchNotification({ messageType: "alert", alertId, severity, title: `【高】负面舆情 - ${a.domain || ""}`, content, dedupKey }).catch((e) =>
+    const notifyTitle = `【${amplified ? "危·已入AI" : "高"}】负面舆情 - ${a.domain || ""}`;
+    dispatchNotification({ messageType: "alert", alertId, severity, title: notifyTitle, content, dedupKey }).catch((e) =>
       log.warn(`High-threat notify failed: ${e.message}`)
     );
     log.info(`High-threat alert created + dispatched ${a.url}`);
