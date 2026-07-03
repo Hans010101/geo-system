@@ -61,6 +61,18 @@ async function startServer() {
     res.status(ok ? 200 : 503).json({ ok, db: dbOk, ...getBootInfo(), bootErrors });
   });
 
+  // Telegram bot webhook (public; verified inside via secret_token header). Always 200 so Telegram
+  // doesn't retry; the handler ignores anything without a valid secret / bind code.
+  app.post("/api/telegram/webhook", async (req, res) => {
+    try {
+      const { handleTelegramUpdate } = await import("../monitor/telegram-connect");
+      await handleTelegramUpdate(req.body, req.header("x-telegram-bot-api-secret-token") || undefined);
+    } catch (e: any) {
+      console.warn("[telegram webhook]", e?.message || e);
+    }
+    res.status(200).json({ ok: true });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import MonitorArticleDetailSheet from "@/components/MonitorArticleDetailSheet";
+import TelegramConnect from "@/components/TelegramConnect";
 import { THREAT_META, STANCE_META, RELEVANCE_LABELS, FETCH_ENGINE_LABELS, SOURCE_PLATFORM_META } from "@/lib/monitorLabels";
 
 const PAGE_SIZE = 50;
@@ -267,6 +268,7 @@ export default function SentimentMonitor() {
         <Card>
           <CardContent className="p-4 flex flex-wrap items-center gap-x-6 gap-y-3">
             <span className="text-sm font-medium">推送设置</span>
+            <div className="basis-full"><TelegramConnect /></div>
             <label className="flex items-center gap-2 text-xs">
               <Switch checked={push?.briefingEnabled ?? false} onCheckedChange={(v) => savePush.mutate({ briefingEnabled: v })} />
               定时简报

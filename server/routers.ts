@@ -29,6 +29,14 @@ import {
   getReportPushEnabled,
   setReportPushEnabled,
 } from "./monitor/report";
+import {
+  setBotToken as tgSetBotToken,
+  setupWebhook as tgSetupWebhook,
+  createBindCode as tgCreateBindCode,
+  getTelegramStatus,
+  sendTelegramTest,
+  unbindTelegram,
+} from "./monitor/telegram-connect";
 
 // ==================== Structured Logger ====================
 function createLogger(module: string) {
@@ -2332,6 +2340,21 @@ const monitorRouter = router({
       const res = await generateMonitorReport(input.reportType, input.period);
       return { success: true, ...res };
     }),
+
+  // ===== Telegram 一键连接(共享bot + /start 绑定码 + webhook) =====
+  telegramStatus: protectedProcedure.query(async () => getTelegramStatus()),
+  telegramCreateBindCode: protectedProcedure
+    .input(z.object({ label: z.string().max(64).optional() }).optional())
+    .mutation(async ({ input, ctx }) => tgCreateBindCode(input?.label || (ctx.user as any)?.email || undefined)),
+  // dev-only setup: configure the shared bot token + register the webhook
+  telegramSetBotToken: adminProcedure
+    .input(z.object({ token: z.string().min(20) }))
+    .mutation(async ({ input }) => tgSetBotToken(input.token)),
+  telegramSetupWebhook: adminProcedure
+    .input(z.object({ baseUrl: z.string().url().optional() }).optional())
+    .mutation(async ({ input }) => tgSetupWebhook(input?.baseUrl)),
+  telegramSendTest: adminProcedure.mutation(async () => sendTelegramTest()),
+  telegramUnbind: adminProcedure.mutation(async () => unbindTelegram()),
 
   getReportPushConfig: protectedProcedure.query(async () => ({ enabled: await getReportPushEnabled() })),
   setReportPushConfig: adminProcedure

@@ -320,6 +320,26 @@ export const notificationConfigs = mysqlTable("notificationConfigs", {
 export type NotificationConfig = typeof notificationConfigs.$inferSelect;
 export type InsertNotificationConfig = typeof notificationConfigs.$inferInsert;
 
+// ==================== Telegram Bindings (一键连接 /start 绑定码) ====================
+// Self-service Telegram connect: user clicks 连接 → we mint a code + t.me/<bot>?start=<code> link →
+// user presses Start → Telegram webhooks /start <code> → we resolve the code to their chat.id and
+// write the notificationConfigs telegram row. This table only holds the short-lived code + the result.
+export const telegramBindings = mysqlTable("telegram_bindings", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  label: varchar("label", { length: 64 }), // who requested it (username/email), for display
+  status: mysqlEnum("status", ["pending", "bound"]).default("pending").notNull(),
+  chatId: varchar("chatId", { length: 64 }), // set on bind (personal = positive, group = negative)
+  chatTitle: varchar("chatTitle", { length: 128 }),
+  chatType: varchar("chatType", { length: 16 }), // 'private' | 'group' | 'supergroup' | 'channel'
+  expiresAt: bigint("expiresAt", { mode: "number" }), // epoch ms — code valid until
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  boundAt: bigint("boundAt", { mode: "number" }),
+});
+
+export type TelegramBinding = typeof telegramBindings.$inferSelect;
+export type InsertTelegramBinding = typeof telegramBindings.$inferInsert;
+
 // ==================== Notification Logs (推送日志) ====================
 export const notificationLogs = mysqlTable("notificationLogs", {
   id: int("id").autoincrement().primaryKey(),
