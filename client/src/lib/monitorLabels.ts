@@ -29,6 +29,7 @@ export const FETCH_ENGINE_LABELS: Record<string, string> = {
 export const SOURCE_PLATFORM_META: Record<string, { label: string; color: string }> = {
   web: { label: "Web/新闻", color: "#6b7280" },
   binance_square: { label: "币安广场", color: "#f0b90b" }, // Binance yellow
+  gate_square: { label: "Gate广场", color: "#2354e6" }, // Gate blue
   x: { label: "X", color: "#111827" },
   reddit: { label: "Reddit", color: "#ff4500" },
 };

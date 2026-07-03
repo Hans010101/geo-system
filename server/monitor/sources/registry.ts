@@ -2,8 +2,9 @@
 import type { SocialSource } from "./types";
 import { serperSource } from "./serper-source";
 import { binanceSquareSource } from "./binance-source";
+import { gateSquareSource } from "./gate-source";
 
-export const sources: SocialSource[] = [serperSource, binanceSquareSource];
+export const sources: SocialSource[] = [serperSource, binanceSquareSource, gateSquareSource];
 
 export function enabledSources(): SocialSource[] {
   return sources.filter((s) => s.enabled);
@@ -13,4 +14,5 @@ export function enabledSources(): SocialSource[] {
 export const SOURCE_PLATFORM_LABELS: Record<string, string> = {
   web: "Web/新闻",
   binance_square: "币安广场",
+  gate_square: "Gate广场",
 };

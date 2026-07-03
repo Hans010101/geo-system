@@ -136,11 +136,12 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
         let fetchCostUsd = 0;
 
         if (p.fullContent && p.fullContent.length > 0) {
-          // Source (e.g. 币安广场 API) already returned full text → skip the fetch router entirely.
+          // Source (e.g. 币安广场 API, Gate list render) already returned full text → skip the fetch router.
           contentMd = p.fullContent.slice(0, MAX_CONTENT_CHARS);
           title = p.title || contentMd.slice(0, 80);
-          fetchEngine = "source_api";
+          fetchEngine = p.fetchEngineHint || "source_api"; // Gate stamps 'gate_firecrawl'
           fetchStatus = "full";
+          fetchCostUsd = p.fetchCostUsdHint || 0; // Gate attributes its 1-credit list-render cost here
         } else {
           if (domain) await politeWait(domain);
           const fr = await fetchArticle(p.url, p.contentSnippet || "");

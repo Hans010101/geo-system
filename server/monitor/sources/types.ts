@@ -12,6 +12,10 @@ export interface DiscoveredPost {
   publishedAt?: number | null; // epoch ms
   sourceName: string; // machine id: 'serper' | 'binance_square'
   sourcePlatform: string; // stored/display key: 'web' | 'binance_square'
+  // When a source returns fullContent it paid for (e.g. Gate via a Firecrawl list render), it can
+  // stamp the engine + attributed cost so the pipeline records them instead of the "source_api"/0 default.
+  fetchEngineHint?: string;
+  fetchCostUsdHint?: number;
 }
 
 export interface SocialSource {
