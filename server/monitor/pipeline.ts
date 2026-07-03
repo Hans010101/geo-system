@@ -7,7 +7,7 @@ import { analyzeArticle } from "./analyzer";
 import * as budget from "./budget";
 import { enabledSources } from "./sources/registry";
 import type { DiscoveredPost } from "./sources/types";
-import { dispatchHighThreatAlert, sendBriefing, type BriefingItem } from "./notify";
+import { dispatchHighThreatAlert, sendBriefing, alertThresholdMet, type BriefingItem } from "./notify";
 import { normalizeUrl, sha256, domainOf, hasCJK, detectContentLang, log } from "./util";
 
 const CONCURRENCY = 3;
@@ -216,8 +216,8 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
               threatLevel: analysis.threatLevel,
             });
           }
-          // High-threat → immediate real-time alert (deduped by urlHash inside).
-          if (analysis.threatLevel === "high") {
+          // Threat ≥ configured threshold (default 'medium') → immediate real-time alert (deduped by urlHash).
+          if (await alertThresholdMet(analysis.threatLevel)) {
             try {
               const res = await dispatchHighThreatAlert({
                 url: p.url,
@@ -226,6 +226,7 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
                 domain: domain || null,
                 sentimentScore: analysis.sentimentScore,
                 summary: analysis.summary,
+                threatLevel: analysis.threatLevel,
               });
               if (res.created) stats.realtimeAlerts++;
             } catch (e: any) {

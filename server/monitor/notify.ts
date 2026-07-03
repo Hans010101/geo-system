@@ -12,7 +12,22 @@ const CFG = {
   briefingEnabled: "monitor_briefing_enabled",
   briefingMode: "monitor_briefing_mode", // 'every' | 'negative_only'
   realtimeEnabled: "monitor_realtime_enabled",
+  alertMinThreat: "monitor_alert_min_threat", // 'high' | 'medium' | 'low' — min threat that triggers a real-time alert
 };
+
+// Threat ordering. Default alert threshold is 'medium': 'high' alone is often 0 articles (the threat
+// model is conservative), so only-high would page never; 'medium' catches real negatives without the
+// low-threat noise. threatLevel is only assigned to negative articles (纯负面才计威胁), so meeting the
+// threshold already implies negative.
+const THREAT_RANK: Record<string, number> = { high: 3, medium: 2, low: 1, none: 0 };
+export async function getAlertMinThreat(): Promise<"high" | "medium" | "low"> {
+  const v = (await db.getSysConfig(CFG.alertMinThreat)) as any;
+  return v === "high" || v === "medium" || v === "low" ? v : "medium";
+}
+export async function alertThresholdMet(threatLevel: string | null | undefined): Promise<boolean> {
+  const min = await getAlertMinThreat();
+  return (THREAT_RANK[threatLevel || "none"] ?? 0) >= THREAT_RANK[min];
+}
 
 export type BriefingItem = {
   title: string;
@@ -24,19 +39,21 @@ export type BriefingItem = {
   threatLevel: string | null;
 };
 
-export async function getPushConfig(): Promise<{ briefingEnabled: boolean; briefingMode: string; realtimeEnabled: boolean }> {
+export async function getPushConfig(): Promise<{ briefingEnabled: boolean; briefingMode: string; realtimeEnabled: boolean; alertMinThreat: string }> {
   const truthy = (v: string | null, d: boolean) => (v == null ? d : v === "true");
   return {
     briefingEnabled: truthy(await db.getSysConfig(CFG.briefingEnabled), false),
     briefingMode: (await db.getSysConfig(CFG.briefingMode)) || "every",
     realtimeEnabled: truthy(await db.getSysConfig(CFG.realtimeEnabled), false),
+    alertMinThreat: await getAlertMinThreat(),
   };
 }
 
-export async function setPushConfig(p: { briefingEnabled?: boolean; briefingMode?: string; realtimeEnabled?: boolean }): Promise<void> {
+export async function setPushConfig(p: { briefingEnabled?: boolean; briefingMode?: string; realtimeEnabled?: boolean; alertMinThreat?: string }): Promise<void> {
   if (p.briefingEnabled !== undefined) await db.setSysConfig(CFG.briefingEnabled, String(p.briefingEnabled));
   if (p.briefingMode !== undefined) await db.setSysConfig(CFG.briefingMode, p.briefingMode);
   if (p.realtimeEnabled !== undefined) await db.setSysConfig(CFG.realtimeEnabled, String(p.realtimeEnabled));
+  if (p.alertMinThreat && ["high", "medium", "low"].includes(p.alertMinThreat)) await db.setSysConfig(CFG.alertMinThreat, p.alertMinThreat);
 }
 
 const srcLabel = (p: string) => SOURCE_PLATFORM_LABELS[p] || p;
@@ -115,6 +132,7 @@ export async function dispatchHighThreatAlert(a: {
   domain: string | null;
   sentimentScore: number | null;
   summary: string | null;
+  threatLevel?: string | null; // actual threat of THIS article (may be medium now that threshold is configurable)
 }): Promise<{ created: boolean; content?: string }> {
   const cfg = await getPushConfig();
   const dedupKey = `negative_article:${a.urlHash}`;
@@ -133,26 +151,27 @@ export async function dispatchHighThreatAlert(a: {
     log.warn(`High-threat penetration lookup failed: ${e?.message || e}`);
   }
   const amplified = pen.aiPlatforms > 0;
-  // A negative from an AI-cited source is the worst case → escalate to critical.
-  const severity = a.sentimentScore === 1 || amplified ? "critical" : "high";
+  const threat = a.threatLevel === "high" ? "高" : a.threatLevel === "medium" ? "中" : a.threatLevel === "low" ? "低" : "—";
+  // Severity: an AI-amplified or sentiment=1 negative is worst (critical); else map threat→high/medium.
+  const severity = a.sentimentScore === 1 || amplified ? "critical" : a.threatLevel === "high" ? "high" : "medium";
   const penLine = amplified
     ? `\n🔴 GEO 穿透: 此信源已被 ${pen.aiPlatforms} 个 AI 平台引用（${pen.platformList.slice(0, 6).join("/")}${pen.platformList.length > 6 ? "…" : ""}，累计 ${pen.citationCount} 次）— 负面正被 AI 放大`
     : "";
   const content =
-    `🚨 高威胁舆情预警\n${a.title.slice(0, 100)}\n` +
-    `来源: ${a.domain || "?"}（${stanceLabel}） | 威胁: 高${amplified ? " | ⚠️已入AI引用" : ""}\n` +
+    `🚨 负面舆情预警\n${a.title.slice(0, 100)}\n` +
+    `来源: ${a.domain || "?"}（${stanceLabel}） | 威胁: ${threat}${amplified ? " | ⚠️已入AI引用" : ""}\n` +
     `${(a.summary || "").slice(0, 300)}${penLine}\n原文: ${a.url}`;
   const alertId = await db.createAlert({
     alertType: "negative_article" as any,
     severity: severity as any,
-    title: `高威胁舆情: ${a.title.slice(0, 80)}`,
+    title: `负面舆情[威胁${threat}]: ${a.title.slice(0, 76)}`,
     description: content.slice(0, 1000),
     relatedPlatform: a.domain ? a.domain.slice(0, 32) : null,
     dedupKey,
   } as any);
 
   if (cfg.realtimeEnabled) {
-    const notifyTitle = `【${amplified ? "危·已入AI" : "高"}】负面舆情 - ${a.domain || ""}`;
+    const notifyTitle = `【${amplified ? "危·已入AI" : threat}】负面舆情 - ${a.domain || ""}`;
     dispatchNotification({ messageType: "alert", alertId, severity, title: notifyTitle, content, dedupKey }).catch((e) =>
       log.warn(`High-threat notify failed: ${e.message}`)
     );

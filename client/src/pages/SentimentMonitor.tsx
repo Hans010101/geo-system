@@ -283,8 +283,19 @@ export default function SentimentMonitor() {
             </div>
             <label className="flex items-center gap-2 text-xs">
               <Switch checked={push?.realtimeEnabled ?? false} onCheckedChange={(v) => savePush.mutate({ realtimeEnabled: v })} />
-              高威胁实时预警
+              负面实时预警
             </label>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">预警阈值</span>
+              <Select value={push?.alertMinThreat || "medium"} onValueChange={(v) => savePush.mutate({ alertMinThreat: v as any })}>
+                <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">仅高威胁(最少)</SelectItem>
+                  <SelectItem value="medium">中+高威胁(推荐)</SelectItem>
+                  <SelectItem value="low">低+中+高(最多)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <span className="text-[11px] text-muted-foreground ml-auto">推送渠道 &amp; 静默时段在「通知设置」配置</span>
           </CardContent>
         </Card>

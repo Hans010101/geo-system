@@ -2219,6 +2219,7 @@ const monitorRouter = router({
         briefingEnabled: z.boolean().optional(),
         briefingMode: z.enum(["every", "negative_only"]).optional(),
         realtimeEnabled: z.boolean().optional(),
+        alertMinThreat: z.enum(["high", "medium", "low"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
