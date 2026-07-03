@@ -53,6 +53,26 @@ export function hasCJK(s: string): boolean {
   return /[一-鿿]/.test(s || "");
 }
 
+// Entity-aware keyword match for feed/broadcast sources (Gate/RSS/Telegram) whose items aren't
+// keyword-searched at the API — we pull the whole feed then filter locally. A text is relevant to a
+// monitor keyword only if it names one of our CORE entities that the keyword also references. Latin
+// tickers/names use word boundaries ("TRON" ≠ "electron"); CJK uses substring; generic qualifiers in
+// the keyword (SEC/lawsuit/起诉/Trump…) are ignored (they'd match unrelated items).
+const CJK_ENTITIES = ["孙宇晨", "波场链", "波场", "孙哥", "火币"];
+const LATIN_ENTITIES = ["justin sun", "tron", "trx", "usdd", "wlfi", "htx"];
+function latinWordHit(lowText: string, e: string): boolean {
+  const pat = e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return new RegExp(`(?<![a-z0-9])\\$?${pat}(?![a-z0-9])`, "i").test(lowText);
+}
+export function keywordMatchesText(keyword: string, text: string): boolean {
+  if (!keyword || !text) return false;
+  const kwLow = keyword.toLowerCase();
+  const low = text.toLowerCase();
+  for (const e of CJK_ENTITIES) if (keyword.includes(e) && text.includes(e)) return true;
+  for (const e of LATIN_ENTITIES) if (kwLow.includes(e) && latinWordHit(low, e)) return true;
+  return false;
+}
+
 // Language gate for the monitor: keep 中文 + English, drop foreign-dominant posts (币安/Gate 广场是
 //多语言平台,会返回阿拉伯语/日语/韩语等无关内容). Script-share heuristic — no external dep.
 // Conservative: only rejects when a non-CJK/Latin script clearly DOMINATES and there is little

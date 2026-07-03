@@ -6,7 +6,7 @@
 // budget-gated via the shared monthly Firecrawl counter. Language filtering (zh/en only) happens in the pipeline.
 import * as db from "../../db";
 import * as budget from "../budget";
-import { log, parseSerperDate } from "../util";
+import { log, parseSerperDate, keywordMatchesText } from "../util";
 import type { SocialSource, DiscoveredPost, SearchOpts } from "./types";
 
 // TRON/TRX topic feeds — the 广场 "Latest" firehose is generic (≈0 TRON UGC/snapshot), but these
@@ -101,26 +101,6 @@ async function ensureFeed(): Promise<ParsedPost[]> {
   return all;
 }
 
-// The 广场 feed is a general trading firehose, so we match on CORE ENTITIES (not raw keyword phrases):
-// a post is relevant only if it names one of our targets. Latin tickers/names use word boundaries so
-// "TRON" doesn't match "elec\btron\b"; CJK uses substring (no word boundaries in Chinese). Generic
-// qualifiers in the keyword (SEC/lawsuit/起诉/Trump…) are ignored — they'd match unrelated posts.
-const CJK_ENTITIES = ["孙宇晨", "波场链", "波场", "孙哥", "火币"];
-const LATIN_ENTITIES = ["justin sun", "tron", "trx", "usdd", "wlfi", "htx"];
-
-function bodyHasLatin(lowBody: string, e: string): boolean {
-  const pat = e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-  return new RegExp(`(?<![a-z0-9])\\$?${pat}(?![a-z0-9])`, "i").test(lowBody);
-}
-// Which of our entities does THIS keyword reference, and are any present in the post body?
-function keywordHitsBody(keyword: string, body: string): boolean {
-  const kwLow = keyword.toLowerCase();
-  const low = body.toLowerCase();
-  for (const e of CJK_ENTITIES) if (keyword.includes(e) && body.includes(e)) return true;
-  for (const e of LATIN_ENTITIES) if (kwLow.includes(e) && bodyHasLatin(low, e)) return true;
-  return false;
-}
-
 export const gateSquareSource: SocialSource = {
   name: "gate_square",
   platform: "gate_square",
@@ -128,7 +108,7 @@ export const gateSquareSource: SocialSource = {
   async search(keyword: string, _opts?: SearchOpts): Promise<DiscoveredPost[]> {
     const posts = await ensureFeed();
     if (!keyword.trim()) return [];
-    const matched = posts.filter((p) => keywordHitsBody(keyword, p.body));
+    const matched = posts.filter((p) => keywordMatchesText(keyword, p.body));
     return matched.map((p) => {
       // Attribute the single per-cycle render credit to the first post that actually surfaces.
       let costHint = 0;
