@@ -84,12 +84,22 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   }
   log.info(`Search done: ${keywords.length} keywords × ${srcs.length} sources → ${discovered.size} unique posts (serperCalls ${serperCalls})`);
 
-  // 2) Drop already-stored (dedup vs DB) + non-中英文 (多语言广场会混入阿拉伯语/日语等无关内容), cap the batch.
+  // 2) Drop already-stored (dedup vs DB) + stale (published outside the collect window, e.g. RSS/Serper
+  //    历史条目) + non-中英文 (多语言广场混入阿拉伯语/日语), cap the batch.
+  // Age filter: only drop when publishedAt is PRESENT and older than the window. Missing publishedAt
+  // (null/0 — Gate topic posts, some Serper results) is KEPT conservatively (can't date ⇒ don't discard).
+  const windowDays = Math.max(1, parseInt((await db.getSysConfig("monitor_collect_window_days")) || "7", 10) || 7);
+  const ageCutoff = Date.now() - windowDays * 86_400_000;
   const fresh: FreshItem[] = [];
   const langSkips: Record<string, number> = {};
+  let ageSkips = 0;
   for (const [h, v] of Array.from(discovered)) {
     if (await db.getMonitorArticleByUrlHash(h)) continue;
     const p = v.post;
+    if (p.publishedAt && p.publishedAt > 0 && p.publishedAt < ageCutoff) {
+      ageSkips++;
+      continue;
+    }
     const { lang, allowed } = detectContentLang(`${p.title || ""} ${p.fullContent || p.contentSnippet || ""}`);
     if (!allowed) {
       langSkips[lang] = (langSkips[lang] || 0) + 1;
@@ -101,6 +111,7 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
       break;
     }
   }
+  if (ageSkips > 0) log.info(`Age filter: skipped ${ageSkips} posts published >${windowDays}d ago`);
   const langSkipTotal = Object.values(langSkips).reduce((a, b) => a + b, 0);
   if (langSkipTotal > 0) log.info(`Language filter: skipped ${langSkipTotal} non-中英文 posts ${JSON.stringify(langSkips)}`);
   log.info(`Dedup done: ${fresh.length} new posts to process (cap ${maxPerCycle})`);
