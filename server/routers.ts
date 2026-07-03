@@ -13,7 +13,7 @@ import { dispatchNotification } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
-import { refreshCookieViaBrowser, getCookieStatus } from "./monitor/sources/binance-cookie";
+import { getCookieStatus } from "./monitor/sources/binance-cookie";
 import { getPushConfig, setPushConfig } from "./monitor/notify";
 import {
   getSourcePenetration,
@@ -2205,10 +2205,10 @@ const monitorRouter = router({
     return { success: ok };
   }),
 
-  // 币安广场 AWS WAF cookie status + on-demand refresh (needs Chromium; in Cloud Run this reports
-  // whether in-container refresh works — else refresh externally and it lands in sysConfigs).
+  // 币安广场 AWS WAF cookie status (read-only). Refresh is fully external: the GitHub Actions cron runs
+  // refresh-binance-cookie.ts every 2h (Chromium runner) → writes into sysConfigs. No in-app refresh
+  // endpoint (Cloud Run has no Chromium; the old button only ever errored).
   binanceCookieStatus: protectedProcedure.query(async () => getCookieStatus()),
-  refreshBinanceCookie: adminProcedure.mutation(async () => refreshCookieViaBrowser()),
 
   // Phase 2 push config: briefing/realtime toggles + briefing mode (channels + silent hours live in
   // notificationConfigs, managed at /config/notifications).

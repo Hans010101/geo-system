@@ -97,14 +97,6 @@ export default function SentimentMonitor() {
     onError: (e) => toast.error(e.message),
   });
   const { data: bnCookie } = trpc.monitor.binanceCookieStatus.useQuery();
-  const refreshCookie = trpc.monitor.refreshBinanceCookie.useMutation({
-    onSuccess: (r) => {
-      utils.monitor.binanceCookieStatus.invalidate();
-      if (r.ok) toast.success("币安 WAF cookie 已刷新");
-      else toast.error("刷新失败(需 Chromium 环境,或用外部脚本刷新): " + (r.error || ""));
-    },
-    onError: (e) => toast.error(e.message),
-  });
 
   const articles = resp?.data ?? [];
   const total = resp?.total ?? 0;
@@ -156,10 +148,7 @@ export default function SentimentMonitor() {
               <Badge variant={bnCookie?.valid ? "default" : "secondary"} className={`text-[10px] ${bnCookie?.valid ? "" : "text-orange-600"}`}>
                 {bnCookie?.valid ? "有效" : "无效/过期"}
               </Badge>
-              <span className="text-[10px] text-muted-foreground">每2h自动刷新</span>
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={refreshCookie.isPending} onClick={() => refreshCookie.mutate()} title="尝试在线刷新(需 Chromium;生产容器通常不可用,失败属正常)">
-                {refreshCookie.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "刷新"}
-              </Button>
+              <span className="text-[10px] text-muted-foreground">由 GitHub Actions 每2h自动刷新</span>
             </div>
             <Button
               onClick={() => trigger.mutate()}
