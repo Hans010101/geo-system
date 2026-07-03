@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
 import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_BAI_MODELS, BAI_SUPPORTED_PLATFORMS, BAI_BASE_URL, OPENROUTER_BASE_URL, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform, type LLMProvider } from "@shared/geo-types";
 import { calcCostUsd, detectProviderFromBaseUrl } from "@shared/llm-pricing";
 import { ENV } from "./_core/env";
-import { dispatchNotification } from "./_core/notification";
+import { dispatchNotification, getResendConfig, setResendConfig } from "./_core/notification";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
@@ -1977,27 +1977,33 @@ const notificationsRouter = router({
       return { success: true };
     }),
 
-  testChannel: developerProcedure
-    .input(z.object({ channel: z.enum(["feishu", "telegram", "email"]) }))
+  // System-level Resend config (admin sets api key + From once). getter never returns the key.
+  getResendConfig: developerProcedure.query(async () => {
+    const rc = await getResendConfig();
+    return { configured: !!rc.apiKey, from: rc.from };
+  }),
+  setResendConfig: developerProcedure
+    .input(z.object({ apiKey: z.string().optional(), from: z.string().optional() }))
     .mutation(async ({ input }) => {
-      const config = (await db.listNotificationConfigs()).find(c => c.channel === input.channel);
-      if (!config) return { success: false, error: "Channel not configured" };
+      await setResendConfig(input);
+      return { success: true };
+    }),
 
-      const { sendFeishu, sendTelegram, sendEmail } = await import("./_core/senders");
-      const testMsg = { title: "TRON GEO 系统 - 测试通知", content: "这是一条测试消息，确认推送渠道配置正确。\n时间: " + new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) };
+  testChannel: developerProcedure
+    .input(z.object({ channel: z.enum(["telegram", "email"]) }))
+    .mutation(async ({ input }) => {
+      const config = (await db.listNotificationConfigs()).find((c) => c.channel === input.channel);
+      const { sendTelegram, sendEmail } = await import("./_core/senders");
+      const testMsg = { title: "波场舆情监控 - 测试通知", content: "这是一条测试消息，确认推送渠道配置正确。\n时间: " + new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) };
 
-      if (input.channel === "feishu" && config.webhookUrl) {
-        return sendFeishu(config.webhookUrl, testMsg);
-      } else if (input.channel === "telegram" && config.botToken && config.chatId) {
+      if (input.channel === "telegram" && config?.botToken && config?.chatId) {
         return sendTelegram(config.botToken, config.chatId, testMsg);
-      } else if (input.channel === "email" && config.smtpHost && config.smtpUser && config.emailFrom) {
-        return sendEmail({
-          smtpHost: config.smtpHost, smtpPort: config.smtpPort || 465,
-          smtpUser: config.smtpUser, smtpPass: config.smtpPass || "",
-          from: config.emailFrom, to: (config.emailTo as string[]) || [],
-        }, testMsg);
+      } else if (input.channel === "email" && Array.isArray(config?.emailTo) && (config!.emailTo as string[]).length) {
+        const rc = await getResendConfig();
+        if (!rc.apiKey) return { success: false, error: "管理员未配置 Resend 发件服务" };
+        return sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config!.emailTo as string[] }, testMsg);
       }
-      return { success: false, error: "Channel not fully configured" };
+      return { success: false, error: "渠道未配置完整" };
     }),
 
   listLogs: developerProcedure

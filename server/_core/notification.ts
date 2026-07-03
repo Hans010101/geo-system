@@ -1,7 +1,18 @@
 import * as db from "../db";
-import { sendFeishu, sendTelegram, sendEmail } from "./senders";
+import { sendTelegram, sendEmail } from "./senders";
 
 const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
+// System-level Resend config (set once by admin). From defaults to Resend's test sender.
+const RESEND = { key: "resend_api_key", from: "resend_from" };
+export const DEFAULT_RESEND_FROM = "波场舆情监控 <onboarding@resend.dev>";
+export async function getResendConfig(): Promise<{ apiKey: string | null; from: string }> {
+  return { apiKey: (await db.getSysConfig(RESEND.key)) || null, from: (await db.getSysConfig(RESEND.from)) || DEFAULT_RESEND_FROM };
+}
+export async function setResendConfig(p: { apiKey?: string; from?: string }): Promise<void> {
+  if (p.apiKey !== undefined && p.apiKey.trim()) await db.setSysConfig(RESEND.key, p.apiKey.trim());
+  if (p.from !== undefined) await db.setSysConfig(RESEND.from, p.from.trim());
+}
 
 function isInSilentHours(silentStart: string | null, silentEnd: string | null): boolean {
   if (!silentStart || !silentEnd) return false;
@@ -55,18 +66,14 @@ export async function dispatchNotification(payload: {
       let result: { success: boolean; error?: string } = { success: false, error: "Unknown channel" };
       const msg = { title: payload.title, content: payload.content, severity: payload.severity };
 
-      if (config.channel === "feishu" && config.webhookUrl) {
-        result = await sendFeishu(config.webhookUrl, msg);
-      } else if (config.channel === "telegram" && config.botToken && config.chatId) {
+      if (config.channel === "telegram" && config.botToken && config.chatId) {
         result = await sendTelegram(config.botToken, config.chatId, msg);
-      } else if (config.channel === "email" && config.smtpHost && config.smtpUser && config.emailFrom) {
-        result = await sendEmail({
-          smtpHost: config.smtpHost, smtpPort: config.smtpPort || 465,
-          smtpUser: config.smtpUser, smtpPass: config.smtpPass || "",
-          from: config.emailFrom, to: (config.emailTo as string[]) || [],
-        }, msg);
+      } else if (config.channel === "email" && Array.isArray(config.emailTo) && (config.emailTo as string[]).length) {
+        const rc = await getResendConfig();
+        if (!rc.apiKey) { continue; } // Resend not configured system-wide → skip email
+        result = await sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config.emailTo as string[] }, msg);
       } else {
-        continue; // Channel not fully configured
+        continue; // Channel not fully configured (feishu removed)
       }
 
       // Log
