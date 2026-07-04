@@ -1,13 +1,17 @@
 name: Refresh Binance Square Cookie
 
-# Refreshes the 币安广场 AWS WAF cookie into the production DB (sysConfigs) every 2h. Uses a GitHub-hosted
-# runner (has Chromium) + a minimal-privilege Service Account (roles/cloudsql.client) via cloud-sql-proxy,
-# writing as a scoped MySQL user (cookie_writer, SELECT/INSERT/UPDATE on sysConfigs only). No public DB
-# exposure, no root password. Cookie TTL is 3h, so 2h cadence leaves ~1h buffer.
+# Refreshes the 币安广场 AWS WAF cookie into the production DB (sysConfigs). Uses a GitHub-hosted runner
+# (has Chromium) + a minimal-privilege Service Account (roles/cloudsql.client) via cloud-sql-proxy, writing
+# as a scoped MySQL user (cookie_writer, SELECT/INSERT/UPDATE on sysConfigs only). No public DB exposure,
+# no root password.
+#
+# Cadence is HOURLY (not 2h): GitHub's scheduled cron is best-effort and regularly fires 3–4.5h apart under
+# load (observed), which exceeds the cookie's 3h TTL and lets it lapse to "expired" between refreshes. An
+# hourly attempt keeps the effective gap well under 3h even when GitHub drops a run or two.
 
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 concurrency:

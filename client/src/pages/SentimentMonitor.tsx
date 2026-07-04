@@ -140,16 +140,12 @@ export default function SentimentMonitor() {
             </div>
             <div
               className="flex items-center gap-2 rounded-lg border px-3 py-1.5"
-              title={
-                "币安广场 WAF cookie 由 GitHub Actions 每 2 小时自动刷新(容器内无 Chromium,无法在线刷新)。" +
-                (bnCookie?.expireAt ? `\n过期时间: ${new Date(bnCookie.expireAt).toLocaleString("zh-CN", { hour12: false })}` : "")
-              }
+              title={bnCookie?.expireAt ? `过期时间: ${new Date(bnCookie.expireAt).toLocaleString("zh-CN", { hour12: false })}` : "币安广场 WAF cookie 状态"}
             >
               <span className="text-xs text-muted-foreground">币安 cookie</span>
               <Badge variant={bnCookie?.valid ? "default" : "secondary"} className={`text-[10px] ${bnCookie?.valid ? "" : "text-orange-600"}`}>
                 {bnCookie?.valid ? "有效" : "无效/过期"}
               </Badge>
-              <span className="text-[10px] text-muted-foreground">由 GitHub Actions 每2h自动刷新</span>
             </div>
             <Button
               onClick={() => trigger.mutate()}
