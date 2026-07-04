@@ -24,19 +24,32 @@ export async function getBotToken(): Promise<string | null> {
   return (await getSysConfig(K.token)) || null;
 }
 // Dev sets the token once (via admin tRPC). Re-fetch the username; clear any stale webhook secret pairing.
-export async function setBotToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }> {
+// One dev action does everything: validate (getMe) → store → (if token changed) wipe stale bindings →
+// register the webhook 五件套. Principle 2: chat_id is a function of {bot,chat}, so switching bots
+// invalidates every old chat_id — we must clear bindings and make users re-/start against the new bot.
+export async function setBotToken(token: string, baseUrl = DEFAULT_BASE_URL): Promise<{ ok: boolean; username?: string; webhookOk?: boolean; rebindNeeded?: boolean; error?: string }> {
   const t = token.trim();
   if (!/^\d+:[A-Za-z0-9_-]{20,}$/.test(t)) return { ok: false, error: "token 格式不对(应形如 123456:ABC...)" };
   try {
-    const resp = await fetch(api(t, "getMe"));
-    const j: any = await resp.json();
-    if (!j?.ok || !j.result?.username) return { ok: false, error: `getMe 失败: ${j?.description || resp.status}` };
+    const me: any = await (await fetch(api(t, "getMe"))).json();
+    if (!me?.ok || !me.result?.username) return { ok: false, error: `getMe 失败: ${me?.description || "token 无效"}` };
+    const old = await getBotToken();
+    const changed = !!old && old !== t;
     await setSysConfig(K.token, t);
-    await setSysConfig(K.username, j.result.username);
-    return { ok: true, username: j.result.username };
+    await setSysConfig(K.username, me.result.username);
+    if (changed) await clearTelegramBindings(); // old chat_ids dead → force re-connect
+    const hook = await setupWebhook(baseUrl); // 五件套
+    return { ok: true, username: me.result.username, webhookOk: hook.ok, rebindNeeded: changed, error: hook.ok ? undefined : hook.error };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e).slice(0, 160) };
   }
+}
+
+// Wipe all bindings + the telegram target (used on token change / manual disconnect).
+async function clearTelegramBindings(): Promise<void> {
+  const db = await getDb();
+  if (db) await db.delete(telegramBindings);
+  await upsertNotificationConfig({ channel: "telegram", isEnabled: false, chatId: null as any });
 }
 
 export async function getBotUsername(): Promise<string | null> {
@@ -119,7 +132,12 @@ export async function handleTelegramUpdate(update: any, secretHeader: string | u
   if (!db) return;
   const rows = await db.select().from(telegramBindings).where(eq(telegramBindings.code, code)).limit(1);
   const b = rows[0];
-  if (!b || b.status === "bound") { await reply("⚠️ 绑定码无效或已使用,请回网页重新点「连接」。"); return; }
+  if (!b) { await reply("⚠️ 绑定码无效,请回网页重新点「连接」。"); return; }
+  if (b.status === "bound") {
+    // Idempotent (原则3): Telegram may re-deliver the same update, or the user re-taps the link.
+    if (b.chatId === chatId) { await reply("✅ 已连接,无需重复操作。"); return; }
+    await reply("⚠️ 该绑定码已被使用,请回网页重新点「连接」。"); return;
+  }
   if (b.expiresAt && Date.now() > b.expiresAt) { await reply("⚠️ 绑定码已过期(15分钟),请回网页重新点「连接」。"); return; }
 
   await db.update(telegramBindings)
@@ -173,6 +191,16 @@ export async function sendTelegramTest(): Promise<{ ok: boolean; error?: string 
     content: "这是一条来自波场舆情监控的测试预警。收到即代表连接正常。",
   });
   return { ok: r.success, error: r.error };
+}
+
+// ★ Identity red-line (原则1): the alert sender does NOT take a chat_id. Token + target chat_id are
+// read here from config, so a caller physically cannot direct an alert at the wrong chat — a whole
+// class of "sent the prediction to the wrong person" bugs becomes impossible. Used by the dispatcher.
+export async function sendTelegramAlert(msg: { title: string; content: string }): Promise<{ success: boolean; error?: string }> {
+  const token = await getBotToken();
+  const tg = (await listNotificationConfigs()).find((c: any) => c.channel === "telegram" && c.chatId && c.isEnabled);
+  if (!token || !tg?.chatId) return { success: false, error: "Telegram 未连接" };
+  return sendTelegram(token, tg.chatId, msg); // chat_id is the sender's private state, never a parameter
 }
 
 // Disconnect: disable + clear the telegram channel target.

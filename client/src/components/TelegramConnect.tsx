@@ -39,7 +39,12 @@ export default function TelegramConnect() {
     onError: (e) => toast.error(e.message),
   });
   const setTokenM = trpc.monitor.telegramSetBotToken.useMutation({
-    onSuccess: (r) => { if (r.ok) { toast.success(`机器人 @${r.username} 已配置`); setToken(""); setShowSetup(false); utils.monitor.telegramStatus.invalidate(); } else toast.error(r.error || "配置失败"); },
+    onSuccess: (r) => {
+      if (!r.ok) { toast.error(r.error || "配置失败"); return; }
+      setToken(""); setShowSetup(false); utils.monitor.telegramStatus.invalidate();
+      if (r.rebindNeeded) toast.warning(`已切换到 @${r.username}。换 bot 后旧 chat 全部失效,请所有人重新「连接 Telegram」。`);
+      else toast.success(`机器人 @${r.username} 已配置${r.webhookOk ? " + Webhook 已注册" : "(⚠ Webhook 注册失败,请重试)"}`);
+    },
     onError: (e) => toast.error(e.message),
   });
   const setupHook = trpc.monitor.telegramSetupWebhook.useMutation({

@@ -1,5 +1,6 @@
 import * as db from "../db";
-import { sendTelegram, sendEmail } from "./senders";
+import { sendEmail } from "./senders";
+import { sendTelegramAlert } from "../monitor/telegram-connect";
 
 const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
@@ -62,32 +63,35 @@ export async function dispatchNotification(payload: {
         if (recent) continue;
       }
 
-      // Send
-      let result: { success: boolean; error?: string } = { success: false, error: "Unknown channel" };
-      const msg = { title: payload.title, content: payload.content, severity: payload.severity };
+      // Send — 原则6: one channel failing (throw or error) must NOT affect the others.
+      try {
+        let result: { success: boolean; error?: string } = { success: false, error: "Unknown channel" };
+        const msg = { title: payload.title, content: payload.content, severity: payload.severity };
 
-      if (config.channel === "telegram" && config.botToken && config.chatId) {
-        result = await sendTelegram(config.botToken, config.chatId, msg);
-      } else if (config.channel === "email" && Array.isArray(config.emailTo) && (config.emailTo as string[]).length) {
-        const rc = await getResendConfig();
-        if (!rc.apiKey) { continue; } // Resend not configured system-wide → skip email
-        result = await sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config.emailTo as string[] }, msg);
-      } else {
-        continue; // Channel not fully configured (feishu removed)
+        if (config.channel === "telegram") {
+          result = await sendTelegramAlert(msg); // 原则1: sender reads token+chat_id internally, no id passed
+        } else if (config.channel === "email" && Array.isArray(config.emailTo) && (config.emailTo as string[]).length) {
+          const rc = await getResendConfig();
+          if (!rc.apiKey) continue; // Resend not configured system-wide → skip email
+          result = await sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config.emailTo as string[] }, msg);
+        } else {
+          continue; // Channel not fully configured (feishu removed)
+        }
+
+        await db.createNotificationLog({
+          channel: config.channel,
+          alertId: payload.alertId || null,
+          batchId: payload.batchId || null,
+          messageType: payload.messageType,
+          title: payload.title,
+          content: payload.content,
+          success: result.success,
+          errorMessage: result.error || null,
+          dedupKey: payload.dedupKey ? `${config.channel}:${payload.dedupKey}` : null,
+        });
+      } catch (chErr: any) {
+        console.warn(`[notify] ${config.channel} failed (isolated):`, chErr?.message || chErr);
       }
-
-      // Log
-      await db.createNotificationLog({
-        channel: config.channel,
-        alertId: payload.alertId || null,
-        batchId: payload.batchId || null,
-        messageType: payload.messageType,
-        title: payload.title,
-        content: payload.content,
-        success: result.success,
-        errorMessage: result.error || null,
-        dedupKey: payload.dedupKey ? `${config.channel}:${payload.dedupKey}` : null,
-      });
     }
   } catch (err: any) {
     console.error("[Notification] dispatch failed:", err.message);
