@@ -70,6 +70,8 @@ export type InvokeParams = {
   baseUrl: string;
   /** Model override */
   model?: string;
+  /** Hard client-side timeout (ms). Prevents a hung upstream from stalling the caller forever. Default 120s. */
+  timeoutMs?: number;
 };
 
 export type ToolCall = {
@@ -271,6 +273,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     apiKey,
     baseUrl,
     model,
+    timeoutMs,
   } = params;
 
   if (!apiKey || !baseUrl) {
@@ -312,14 +315,24 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  // Hard client-side timeout: node fetch has no default total timeout, so a hung LLM upstream would
+  // otherwise block the caller forever (e.g. stalling an entire monitor cycle). abort() destroys the socket.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error(`LLM request timeout after ${timeoutMs ?? 120000}ms`)), timeoutMs ?? 120000);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

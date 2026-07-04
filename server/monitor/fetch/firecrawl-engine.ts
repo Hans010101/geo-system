@@ -2,6 +2,7 @@
 // the monthly Firecrawl credit limit is hit. Key from globalApiKeys (name='Firecrawl').
 import * as db from "../../db";
 import * as budget from "../budget";
+import { fetchWithTimeout } from "../util";
 import type { FetchEngine, FetchResult } from "./types";
 
 const MIN_FULL_CHARS = 200;
@@ -24,11 +25,11 @@ export const firecrawlEngine: FetchEngine = {
       const key = await db.getGlobalApiKeyByName("Firecrawl");
       if (!key?.apiKey) return { success: false, engine: "firecrawl", costUsd: 0, status: "failed", error: "no firecrawl key" };
       const base = (key.baseUrl || "https://api.firecrawl.dev").replace(/\/$/, "");
-      const resp = await fetch(`${base}/v1/scrape`, {
+      const resp = await fetchWithTimeout(`${base}/v1/scrape`, {
         method: "POST",
         headers: { Authorization: `Bearer ${key.apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, timeout: 60000 }),
-      });
+      }, 70000); // client abort above Firecrawl's 60s server-side scrape timeout
       if (!resp.ok) return { success: false, engine: "firecrawl", costUsd: cost, status: "failed", error: `HTTP ${resp.status}` };
       const json: any = await resp.json();
       const d = json?.data || json;

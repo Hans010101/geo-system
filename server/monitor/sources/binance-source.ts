@@ -4,7 +4,7 @@
 // (no Firecrawl cost). If no valid cookie, returns [] gracefully (rest of the pipeline unaffected).
 import { randomUUID } from "crypto";
 import { getStoredCookie, BINANCE_UA } from "./binance-cookie";
-import { log } from "../util";
+import { log, fetchWithTimeout } from "../util";
 import type { SocialSource, DiscoveredPost, SearchOpts } from "./types";
 
 const SEARCH_API = "https://www.binance.com/bapi/composite/v2/friendly/pgc/feed/search/list";
@@ -22,7 +22,7 @@ export const binanceSquareSource: SocialSource = {
     }
     try {
       const traceId = randomUUID();
-      const resp = await fetch(SEARCH_API, {
+      const resp = await fetchWithTimeout(SEARCH_API, {
         method: "POST",
         headers: {
           // captured template (device-info/versioncode/clienttype/csrftoken/lang/…) — required by the gateway
@@ -37,7 +37,7 @@ export const binanceSquareSource: SocialSource = {
           referer: "https://www.binance.com/zh-CN/square",
         },
         body: JSON.stringify({ scene: "web", pageIndex: 1, pageSize: opts?.num ?? 20, searchContent: keyword, type: 1 }), // type 1 = 内容(posts); 2=创作者, 3=话题
-      });
+      }, 20000);
       if (!resp.ok) {
         log.warn(`binance_square "${keyword}": HTTP ${resp.status}`);
         return [];

@@ -1,6 +1,7 @@
 // Serper.dev search wrapper. Uses the 'news' vertical (dated, higher news purity than web).
 // API key is read from globalApiKeys (name = 'Serper'); never hard-coded / env.
 import * as db from "../db";
+import { fetchWithTimeout } from "./util";
 
 const SERPER_DEFAULT_BASE = "https://google.serper.dev";
 
@@ -30,11 +31,11 @@ export async function searchNews(
   if (opts?.tbs) body.tbs = opts.tbs;
   if (opts?.gl) body.gl = opts.gl; // country: 'cn' for 中文舆情, 'us' for 英文
   if (opts?.hl) body.hl = opts.hl; // ui language: 'zh-cn' / 'en'
-  const resp = await fetch(`${base}/news`, {
+  const resp = await fetchWithTimeout(`${base}/news`, {
     method: "POST",
     headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, 20000);
   if (!resp.ok) {
     const t = await resp.text();
     throw new Error(`Serper news ${resp.status}: ${t.slice(0, 200)}`);

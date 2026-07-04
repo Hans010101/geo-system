@@ -6,7 +6,7 @@
 // budget-gated via the shared monthly Firecrawl counter. Language filtering (zh/en only) happens in the pipeline.
 import * as db from "../../db";
 import * as budget from "../budget";
-import { log, parseSerperDate, keywordMatchesText } from "../util";
+import { log, parseSerperDate, keywordMatchesText, fetchWithTimeout } from "../util";
 import type { SocialSource, DiscoveredPost, SearchOpts } from "./types";
 
 // TRON/TRX topic feeds — the 广场 "Latest" firehose is generic (≈0 TRON UGC/snapshot), but these
@@ -23,11 +23,11 @@ async function firecrawlMarkdown(url: string): Promise<string> {
   const key = await db.getGlobalApiKeyByName("Firecrawl");
   if (!key?.apiKey) throw new Error("no firecrawl key");
   const base = (key.baseUrl || "https://api.firecrawl.dev").replace(/\/$/, "");
-  const resp = await fetch(`${base}/v1/scrape`, {
+  const resp = await fetchWithTimeout(`${base}/v1/scrape`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, timeout: 55000 }),
-  });
+  }, 65000); // client abort above Firecrawl's 55s server-side scrape timeout
   if (!resp.ok) throw new Error(`firecrawl HTTP ${resp.status}`);
   const json: any = await resp.json();
   return (json?.data?.markdown || json?.markdown || "").trim();

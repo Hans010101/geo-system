@@ -96,6 +96,7 @@ export async function analyzeArticle(input: {
       { role: "user", content: buildPrompt(input.title || "", body, partial) },
     ],
     response_format: { type: "json_object" },
+    timeoutMs: 60000, // analysis is a small JSON reply; a hung call must not stall the cycle
   });
 
   const content =

@@ -16,6 +16,21 @@ export function createMonitorLogger(module = "MONITOR") {
 
 export const log = createMonitorLogger();
 
+// fetch with a HARD client-side timeout. node's fetch has no default total timeout, so a hung/slow
+// upstream (Serper/Firecrawl/binance/LLM) would otherwise stall the ENTIRE monitor cycle indefinitely.
+// AbortController.abort() actually destroys the socket (unlike a body-level "timeout" field, which is
+// only the upstream's own deadline). On timeout the fetch rejects → the caller's try/catch skips that
+// one request and the cycle continues.
+export async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 20000): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error(`request timeout after ${ms}ms`)), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
