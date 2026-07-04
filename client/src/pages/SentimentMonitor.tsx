@@ -254,6 +254,7 @@ export default function SentimentMonitor() {
             <div className="space-y-2.5">
               <BudgetBar label="Firecrawl credits" used={budget?.firecrawl.used} limit={budget?.firecrawl.limit} />
               <BudgetBar label="Serper 查询" used={budget?.serper.used} limit={budget?.serper.limit} />
+              <BudgetBar label={`X 推文(twitterapi.io · $${(budget?.x?.estUsd ?? 0).toFixed(2)})`} used={budget?.x?.used} limit={budget?.x?.limit} />
               <div className="flex justify-between text-xs pt-2 border-t">
                 <span className="text-muted-foreground">本月成本细分</span>
                 <span>抓取 ${(stats?.monthFetchCostUsd ?? 0).toFixed(4)} + 分析 ${(stats?.monthAnalysisCostUsd ?? 0).toFixed(4)}</span>

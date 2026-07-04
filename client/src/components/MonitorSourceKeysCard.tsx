@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Globe2, Loader2, CheckCircle2 } from "lucide-react";
+import { Search, Globe2, AtSign, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 const PROVIDERS = [
@@ -24,6 +24,13 @@ const PROVIDERS = [
     defaultBase: "https://api.firecrawl.dev",
     icon: Globe2,
     hint: "自建抓取失败时对硬站点（Reuters/Bloomberg 等）兜底",
+  },
+  {
+    name: "TwitterAPI",
+    label: "twitterapi.io（X/推特）",
+    defaultBase: "https://api.twitterapi.io",
+    icon: AtSign,
+    hint: "监控 @justinsuntron 本人推文 + 关键词提及（唯一付费源，$0.15/千条，护栏在监控页）",
   },
 ];
 

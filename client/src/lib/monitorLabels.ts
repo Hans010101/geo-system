@@ -24,6 +24,9 @@ export const FETCH_ENGINE_LABELS: Record<string, string> = {
   firecrawl: "Firecrawl L4",
   snippet: "仅摘要",
   snippet_only: "仅摘要", // legacy value tolerance
+  source_api: "源自带",
+  gate_firecrawl: "Gate渲染",
+  x_api: "X API",
 };
 
 export const SOURCE_PLATFORM_META: Record<string, { label: string; color: string }> = {

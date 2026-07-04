@@ -5,6 +5,7 @@ import { binanceSquareSource } from "./binance-source";
 import { gateSquareSource } from "./gate-source";
 import { rssSource } from "./rss-source";
 import { telegramSource } from "./telegram-source";
+import { xSource } from "./x-source";
 
 export const sources: SocialSource[] = [
   serperSource,
@@ -12,6 +13,7 @@ export const sources: SocialSource[] = [
   gateSquareSource,
   rssSource,
   telegramSource,
+  xSource,
 ];
 
 export function enabledSources(): SocialSource[] {
@@ -25,4 +27,5 @@ export const SOURCE_PLATFORM_LABELS: Record<string, string> = {
   gate_square: "Gate广场",
   rss: "RSS媒体",
   telegram: "Telegram",
+  x: "X/Twitter",
 };
