@@ -6,8 +6,20 @@ import Parser from "rss-parser";
 import { log, keywordMatchesText } from "../util";
 import type { SocialSource, DiscoveredPost, SearchOpts } from "./types";
 
+// Two tiers: (A) TRON/Justin-Sun-DEDICATED tag feeds — nearly 100% on-topic, the real signal (validated
+// 2026-07-04, density 10-36/feed); (B) general crypto feeds — ~0 TRON density but zero marginal cost and
+// occasionally catch a mainstream TRON story before it's tagged. TRON news is sparse, so most tag-feed
+// items are weeks old (why the RSS collect window is widened to 30d in the pipeline, RSS-only).
 const FEEDS = [
-  "https://cointelegraph.com/rss/tag/tron", // TRON-dedicated
+  // (A) TRON / Justin Sun dedicated
+  "https://cointelegraph.com/rss/tag/tron",
+  "https://cointelegraph.com/rss/tag/justin-sun",
+  "https://www.newsbtc.com/tag/tron/feed/", // freshest dedicated feed (often <2d)
+  "https://www.newsbtc.com/tag/justin-sun/feed/",
+  "https://cryptopotato.com/tag/tron/feed/",
+  "https://coingape.com/tag/tron/feed/",
+  "https://cryptoslate.com/tag/justin-sun/feed/",
+  // (B) general (low TRON density, kept for recall at zero cost)
   "https://cointelegraph.com/rss",
   "https://www.coindesk.com/arc/outboundfeeds/rss/",
   "https://decrypt.co/feed",
@@ -17,7 +29,21 @@ const CACHE_TTL_MS = 8 * 60 * 1000; // one monitor cycle shares one pull of all 
 const MAX_ITEMS_PER_FEED = 40;
 const MIN_FULL_CHARS = 200; // shorter than this → let the pipeline fetch the full article (self L1, free)
 
-const parser = new Parser({ timeout: 20000, headers: { "User-Agent": "geo-monitor/1.0 (+rss)" } });
+// Fetch the XML ourselves with AbortController (rss-parser's own timeout rejects the promise but leaks
+// the socket on a hung feed — abort() actually destroys the connection), then parseString.
+const parser = new Parser();
+const FEED_TIMEOUT_MS = 20000;
+async function fetchFeed(url: string) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FEED_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, { headers: { "User-Agent": "geo-monitor/1.0 (+rss)" }, signal: ctrl.signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await parser.parseString(await resp.text());
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 type FeedItem = { url: string; title: string; text: string; publishedAt: number | null };
 let cache: { at: number; items: FeedItem[] } | null = null;
@@ -32,7 +58,7 @@ async function ensureFeeds(): Promise<FeedItem[]> {
   await Promise.all(
     FEEDS.map(async (url) => {
       try {
-        const feed = await parser.parseURL(url);
+        const feed = await fetchFeed(url);
         for (const it of (feed.items || []).slice(0, MAX_ITEMS_PER_FEED)) {
           const link = (it.link || "").trim();
           if (!link || seen.has(link)) continue;

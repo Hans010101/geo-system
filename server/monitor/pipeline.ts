@@ -89,14 +89,20 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
   // Age filter: only drop when publishedAt is PRESENT and older than the window. Missing publishedAt
   // (null/0 — Gate topic posts, some Serper results) is KEPT conservatively (can't date ⇒ don't discard).
   const windowDays = Math.max(1, parseInt((await db.getSysConfig("monitor_collect_window_days")) || "7", 10) || 7);
-  const ageCutoff = Date.now() - windowDays * 86_400_000;
+  // RSS is a zero-cost discovery feed for a SPARSE topic: TRON/Justin-Sun dedicated tag feeds are ~100%
+  // on-topic but publish infrequently, so the current storyline (孙宇晨/WLFI/HTX) sits weeks back and a
+  // 7d window can't see it. Widen the window for RSS ONLY (default 30d, configurable); all other sources
+  // (Serper/Gate/币安 realtime feeds) keep the tight global window. Never narrower than the global.
+  const rssWindowDays = Math.max(windowDays, parseInt((await db.getSysConfig("monitor_collect_window_days_rss")) || "30", 10) || 30);
+  const now = Date.now();
+  const ageCutoffFor = (platform: string) => now - (platform === "rss" ? rssWindowDays : windowDays) * 86_400_000;
   const fresh: FreshItem[] = [];
   const langSkips: Record<string, number> = {};
   let ageSkips = 0;
   for (const [h, v] of Array.from(discovered)) {
     if (await db.getMonitorArticleByUrlHash(h)) continue;
     const p = v.post;
-    if (p.publishedAt && p.publishedAt > 0 && p.publishedAt < ageCutoff) {
+    if (p.publishedAt && p.publishedAt > 0 && p.publishedAt < ageCutoffFor(p.sourcePlatform)) {
       ageSkips++;
       continue;
     }
@@ -111,7 +117,7 @@ export async function runMonitorCycle(opts?: { tbs?: string }): Promise<MonitorC
       break;
     }
   }
-  if (ageSkips > 0) log.info(`Age filter: skipped ${ageSkips} posts published >${windowDays}d ago`);
+  if (ageSkips > 0) log.info(`Age filter: skipped ${ageSkips} posts (RSS >${rssWindowDays}d / others >${windowDays}d)`);
   const langSkipTotal = Object.values(langSkips).reduce((a, b) => a + b, 0);
   if (langSkipTotal > 0) log.info(`Language filter: skipped ${langSkipTotal} non-中英文 posts ${JSON.stringify(langSkips)}`);
   log.info(`Dedup done: ${fresh.length} new posts to process (cap ${maxPerCycle})`);
