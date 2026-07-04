@@ -9,7 +9,8 @@ import { nanoid } from "nanoid";
 import { PLATFORMS, PLATFORM_OPENROUTER_MODELS, PLATFORM_BAILIAN_MODELS, PLATFORM_BAI_MODELS, BAI_SUPPORTED_PLATFORMS, BAI_BASE_URL, OPENROUTER_BASE_URL, PLATFORM_RECOMMENDED_PROVIDER, PLATFORM_LABELS, type Platform, type LLMProvider } from "@shared/geo-types";
 import { calcCostUsd, detectProviderFromBaseUrl } from "@shared/llm-pricing";
 import { ENV } from "./_core/env";
-import { dispatchNotification, getResendConfig, setResendConfig } from "./_core/notification";
+import { dispatchNotification } from "./_core/notification";
+import { getEmailAlertConfig, setEmailAlertConfig, sendEmailAlert, buildAlertEmailHtml } from "./monitor/email-alert";
 import { formatAlertMessage, formatBatchSummary } from "./_core/senders/templates";
 import { runMonitorCycle, reanalyzeArticle, type MonitorCycleResult } from "./monitor/pipeline";
 import * as monitorBudget from "./monitor/budget";
@@ -1977,33 +1978,40 @@ const notificationsRouter = router({
       return { success: true };
     }),
 
-  // System-level Resend config (admin sets api key + From once). getter never returns the key.
-  getResendConfig: developerProcedure.query(async () => {
-    const rc = await getResendConfig();
-    return { configured: !!rc.apiKey, from: rc.from };
+  // Email alert config (Resend): key + From + the single LOCKED recipient. getter never returns the key.
+  getEmailAlertConfig: developerProcedure.query(async () => {
+    const c = await getEmailAlertConfig();
+    return { configured: !!c.apiKey, from: c.from, recipient: c.recipient };
   }),
-  setResendConfig: developerProcedure
-    .input(z.object({ apiKey: z.string().optional(), from: z.string().optional() }))
+  setEmailAlertConfig: developerProcedure
+    .input(z.object({ apiKey: z.string().optional(), from: z.string().optional(), recipient: z.string().email().optional() }))
     .mutation(async ({ input }) => {
-      await setResendConfig(input);
+      await setEmailAlertConfig(input);
       return { success: true };
     }),
+  testEmailAlert: developerProcedure.mutation(async () => {
+    const html = buildAlertEmailHtml({
+      title: "测试预警 — 若收到此邮件即代表邮件通道正常", domain: "example.com", threat: "中", sentiment: 2,
+      stance: "hostile", summary: "这是一条来自波场舆情监控的测试预警邮件。", url: "https://geo-system-kwm3xu534q-an.a.run.app/sentiment-monitor",
+    });
+    const r = await sendEmailAlert("【测试】波场舆情预警邮件", html);
+    return { success: r.sent, error: r.error };
+  }),
 
+  // Telegram test still goes through the shared sender (reads target internally).
   testChannel: developerProcedure
     .input(z.object({ channel: z.enum(["telegram", "email"]) }))
     .mutation(async ({ input }) => {
-      const config = (await db.listNotificationConfigs()).find((c) => c.channel === input.channel);
-      const { sendTelegram, sendEmail } = await import("./_core/senders");
-      const testMsg = { title: "波场舆情监控 - 测试通知", content: "这是一条测试消息，确认推送渠道配置正确。\n时间: " + new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) };
-
-      if (input.channel === "telegram" && config?.botToken && config?.chatId) {
-        return sendTelegram(config.botToken, config.chatId, testMsg);
-      } else if (input.channel === "email" && Array.isArray(config?.emailTo) && (config!.emailTo as string[]).length) {
-        const rc = await getResendConfig();
-        if (!rc.apiKey) return { success: false, error: "管理员未配置 Resend 发件服务" };
-        return sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config!.emailTo as string[] }, testMsg);
+      if (input.channel === "email") {
+        const html = buildAlertEmailHtml({ title: "测试预警邮件", domain: "example.com", threat: "中", sentiment: 2, summary: "测试", url: "https://geo-system-kwm3xu534q-an.a.run.app" });
+        const r = await sendEmailAlert("【测试】波场舆情预警邮件", html);
+        return { success: r.sent, error: r.error };
       }
-      return { success: false, error: "渠道未配置完整" };
+      const config = (await db.listNotificationConfigs()).find((c) => c.channel === "telegram");
+      const { sendTelegram } = await import("./_core/senders");
+      const testMsg = { title: "波场舆情监控 - 测试通知", content: "这是一条测试消息。\n时间: " + new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) };
+      if (config?.botToken && config?.chatId) return sendTelegram(config.botToken, config.chatId, testMsg);
+      return { success: false, error: "Telegram 未连接" };
     }),
 
   listLogs: developerProcedure

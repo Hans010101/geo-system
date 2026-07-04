@@ -1,19 +1,9 @@
 import * as db from "../db";
-import { sendEmail } from "./senders";
 import { sendTelegramAlert } from "../monitor/telegram-connect";
 
+// This dispatcher now handles ONLY Telegram. Email is a separate, independent path
+// (server/monitor/email-alert.ts, called directly at the alert trigger) — 邮件与TG分家.
 const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-
-// System-level Resend config (set once by admin). From defaults to Resend's test sender.
-const RESEND = { key: "resend_api_key", from: "resend_from" };
-export const DEFAULT_RESEND_FROM = "波场舆情监控 <onboarding@resend.dev>";
-export async function getResendConfig(): Promise<{ apiKey: string | null; from: string }> {
-  return { apiKey: (await db.getSysConfig(RESEND.key)) || null, from: (await db.getSysConfig(RESEND.from)) || DEFAULT_RESEND_FROM };
-}
-export async function setResendConfig(p: { apiKey?: string; from?: string }): Promise<void> {
-  if (p.apiKey !== undefined && p.apiKey.trim()) await db.setSysConfig(RESEND.key, p.apiKey.trim());
-  if (p.from !== undefined) await db.setSysConfig(RESEND.from, p.from.trim());
-}
 
 function isInSilentHours(silentStart: string | null, silentEnd: string | null): boolean {
   if (!silentStart || !silentEnd) return false;
@@ -70,12 +60,8 @@ export async function dispatchNotification(payload: {
 
         if (config.channel === "telegram") {
           result = await sendTelegramAlert(msg); // 原则1: sender reads token+chat_id internally, no id passed
-        } else if (config.channel === "email" && Array.isArray(config.emailTo) && (config.emailTo as string[]).length) {
-          const rc = await getResendConfig();
-          if (!rc.apiKey) continue; // Resend not configured system-wide → skip email
-          result = await sendEmail({ apiKey: rc.apiKey, from: rc.from, to: config.emailTo as string[] }, msg);
         } else {
-          continue; // Channel not fully configured (feishu removed)
+          continue; // Only Telegram here; email is its own path (email-alert.ts), feishu removed.
         }
 
         await db.createNotificationLog({

@@ -7,6 +7,7 @@ import { dispatchNotification } from "../_core/notification";
 import { SOURCE_PLATFORM_LABELS } from "./sources/registry";
 import { log, normalizeDomain } from "./util";
 import { getDomainAiCitation, getSourcePenetration } from "./penetration";
+import { sendEmailAlert, buildAlertEmailHtml } from "./email-alert";
 
 const CFG = {
   briefingEnabled: "monitor_briefing_enabled",
@@ -172,9 +173,13 @@ export async function dispatchHighThreatAlert(a: {
 
   if (cfg.realtimeEnabled) {
     const notifyTitle = `【${amplified ? "危·已入AI" : threat}】负面舆情 - ${a.domain || ""}`;
+    // Telegram (via the shared dispatcher) — fire-and-forget, isolated.
     dispatchNotification({ messageType: "alert", alertId, severity, title: notifyTitle, content, dedupKey }).catch((e) =>
       log.warn(`High-threat notify failed: ${e.message}`)
     );
+    // Email — INDEPENDENT path (原则: 邮件与TG分家), fire-and-forget, locked recipient, silent-degrades.
+    const emailHtml = buildAlertEmailHtml({ title: a.title, domain: a.domain, threat, sentiment: a.sentimentScore, stance: rule?.stance ?? null, summary: a.summary, url: a.url, penLine: penLine.replace(/^\n/, "") || null });
+    sendEmailAlert(`【负面舆情·威胁${threat}】${a.title.slice(0, 50)}`, emailHtml).catch((e) => log.warn(`High-threat email failed: ${e.message}`));
     log.info(`High-threat alert created + dispatched ${a.url}`);
   } else {
     log.info(`High-threat alert row created (realtime push disabled) ${a.url}`);

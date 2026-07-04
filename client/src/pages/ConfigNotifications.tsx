@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Send, CheckCircle, XCircle, Mail, Bot, Settings2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -21,46 +20,36 @@ const SEVERITY_OPTIONS = [
 export default function NotificationSettings() {
   const { data: configs, isLoading } = trpc.notifications.listConfigs.useQuery();
   const { data: logs } = trpc.notifications.listLogs.useQuery({ limit: 10 });
-  const { data: resend } = trpc.notifications.getResendConfig.useQuery();
+  const { data: emailCfg } = trpc.notifications.getEmailAlertConfig.useQuery();
   const utils = trpc.useUtils();
 
   const upsertMutation = trpc.notifications.upsertConfig.useMutation({
     onSuccess: () => { utils.notifications.listConfigs.invalidate(); toast.success("已保存"); },
     onError: (e) => toast.error(e.message),
   });
-  const testMutation = trpc.notifications.testChannel.useMutation({
-    onSuccess: (d) => toast[d.success ? "success" : "error"](d.success ? "测试消息已发送" : `发送失败: ${d.error}`),
+  const saveEmailM = trpc.notifications.setEmailAlertConfig.useMutation({
+    onSuccess: () => { utils.notifications.getEmailAlertConfig.invalidate(); toast.success("邮件配置已保存"); setResendKey(""); setShowKeyEdit(false); },
     onError: (e) => toast.error(e.message),
   });
-  const saveResend = trpc.notifications.setResendConfig.useMutation({
-    onSuccess: () => { utils.notifications.getResendConfig.invalidate(); toast.success("Resend 配置已保存"); setResendKey(""); setShowResendSetup(false); },
+  const testEmailM = trpc.notifications.testEmailAlert.useMutation({
+    onSuccess: (d) => toast[d.success ? "success" : "error"](d.success ? "测试邮件已发送,请查收" : `发送失败: ${d.error}`),
     onError: (e) => toast.error(e.message),
   });
 
-  const [email, setEmail] = useState({ isEnabled: false, emailTo: "" });
-  const [rules, setRules] = useState({ minSeverity: "medium", silentStart: "23:00", silentEnd: "08:00" });
+  const [recipient, setRecipient] = useState("");
   const [resendKey, setResendKey] = useState("");
   const [resendFrom, setResendFrom] = useState("");
-  const [showResendSetup, setShowResendSetup] = useState(false);
+  const [showKeyEdit, setShowKeyEdit] = useState(false);
+  const [rules, setRules] = useState({ minSeverity: "medium", silentStart: "23:00", silentEnd: "08:00" });
 
   useEffect(() => {
-    if (!configs) return;
-    for (const c of configs) {
-      if (c.channel === "email") setEmail({ isEnabled: c.isEnabled, emailTo: Array.isArray(c.emailTo) ? (c.emailTo as string[]).join("\n") : "" });
-      setRules({ minSeverity: c.minSeverity || "medium", silentStart: c.silentStart || "23:00", silentEnd: c.silentEnd || "08:00" });
-    }
+    if (configs) for (const c of configs) if (c.channel === "telegram") setRules({ minSeverity: c.minSeverity || "medium", silentStart: c.silentStart || "23:00", silentEnd: c.silentEnd || "08:00" });
   }, [configs]);
-  useEffect(() => { if (resend?.from) setResendFrom(resend.from); }, [resend?.from]);
+  useEffect(() => { if (emailCfg) { setRecipient(emailCfg.recipient || ""); setResendFrom(emailCfg.from || ""); } }, [emailCfg?.recipient, emailCfg?.from]);
 
-  const saveEmail = () => upsertMutation.mutate({
-    channel: "email", isEnabled: email.isEnabled,
-    emailTo: email.emailTo.split("\n").map((s) => s.trim()).filter(Boolean),
-    minSeverity: rules.minSeverity as any, silentStart: rules.silentStart, silentEnd: rules.silentEnd,
-  });
+  const saveEmail = () => saveEmailM.mutate({ recipient: recipient.trim() || undefined, from: resendFrom.trim() || undefined, apiKey: resendKey.trim() || undefined });
   const saveRules = () => {
-    for (const ch of ["telegram", "email"] as const) {
-      if (configs?.find((c) => c.channel === ch)) upsertMutation.mutate({ channel: ch, minSeverity: rules.minSeverity as any, silentStart: rules.silentStart, silentEnd: rules.silentEnd });
-    }
+    if (configs?.find((c) => c.channel === "telegram")) upsertMutation.mutate({ channel: "telegram", minSeverity: rules.minSeverity as any, silentStart: rules.silentStart, silentEnd: rules.silentEnd });
   };
 
   if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
@@ -76,46 +65,38 @@ export default function NotificationSettings() {
         {/* 邮件 (Resend) */}
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2"><Mail className="h-4 w-4" /> 邮件</CardTitle>
-              <Switch checked={email.isEnabled} onCheckedChange={(v) => setEmail({ ...email, isEnabled: v })} />
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2"><Mail className="h-4 w-4" /> 邮件预警</CardTitle>
+              {emailCfg?.configured
+                ? <Badge className="text-[10px] text-white border-0 bg-emerald-600">Resend 已配置</Badge>
+                : <Badge variant="outline" className="text-[10px]">未配置</Badge>}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* 系统级 Resend 配置(开发者一次性) */}
-            {!resend?.configured ? (
+            {/* 收件邮箱:锁死单一地址(防误发) */}
+            <div className="space-y-1">
+              <Label className="text-xs">接收预警的邮箱</Label>
+              <Input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="you@example.com" className="h-8 text-xs" />
+              <p className="text-[11px] text-muted-foreground">需与 Resend 注册邮箱一致。当前用 Resend 测试发件地址,只能投递到该邮箱;如需发给多人,需在 Resend 验证自有域名。</p>
+            </div>
+            {/* Resend key:开发者一次性配置(密码框,不回显) */}
+            {(!emailCfg?.configured || showKeyEdit) ? (
               <div className="rounded-md border border-dashed p-2 space-y-2">
-                <p className="text-[11px] text-muted-foreground">⚠️ 管理员未配置 Resend 发件服务。到 resend.com 拿 API key(用户有账户),粘贴保存:</p>
+                <p className="text-[11px] text-muted-foreground">到 resend.com 拿 API key,粘贴保存(仅存服务端,不回显):</p>
                 <Input type="password" value={resendKey} onChange={(e) => setResendKey(e.target.value)} placeholder="re_xxx Resend API key" className="h-8 text-xs font-mono" />
-                <Input value={resendFrom} onChange={(e) => setResendFrom(e.target.value)} placeholder="发件地址(已验证域名;未验证用 onboarding@resend.dev)" className="h-8 text-xs" />
-                <Button size="sm" className="h-8 w-full" disabled={saveResend.isPending || resendKey.length < 10} onClick={() => saveResend.mutate({ apiKey: resendKey, from: resendFrom })}>
-                  {saveResend.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "保存 Resend 配置"}
-                </Button>
+                <Input value={resendFrom} onChange={(e) => setResendFrom(e.target.value)} placeholder="发件地址(默认 onboarding@resend.dev)" className="h-8 text-xs" />
               </div>
             ) : (
               <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Badge className="text-[10px] text-white border-0 bg-emerald-600">Resend 已配置</Badge>
-                <span className="truncate">发件: {resend.from}</span>
-                <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => setShowResendSetup((s) => !s)} title="更换 key/发件地址"><Settings2 className="h-3 w-3" /></Button>
+                <span className="truncate">发件: {emailCfg.from}</span>
+                <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => setShowKeyEdit(true)} title="更换 key/发件地址"><Settings2 className="h-3 w-3" /></Button>
               </div>
             )}
-            {resend?.configured && showResendSetup && (
-              <div className="rounded-md border border-dashed p-2 space-y-2">
-                <Input type="password" value={resendKey} onChange={(e) => setResendKey(e.target.value)} placeholder="新 Resend API key(留空则只改发件地址)" className="h-8 text-xs font-mono" />
-                <Input value={resendFrom} onChange={(e) => setResendFrom(e.target.value)} placeholder="发件地址" className="h-8 text-xs" />
-                <Button size="sm" className="h-8 w-full" disabled={saveResend.isPending} onClick={() => saveResend.mutate({ apiKey: resendKey || undefined, from: resendFrom })}>更新</Button>
-              </div>
-            )}
-            {/* 用户级:只填收件邮箱 */}
-            <div className="space-y-1">
-              <Label className="text-xs">接收预警的邮箱(每行一个)</Label>
-              <textarea className="w-full rounded-md border px-2 py-1.5 text-xs h-16 resize-none" value={email.emailTo}
-                onChange={(e) => setEmail({ ...email, emailTo: e.target.value })} placeholder={"you@example.com\nteam@example.com"} />
-            </div>
             <div className="flex gap-2">
-              <Button size="sm" className="flex-1" onClick={saveEmail} disabled={upsertMutation.isPending}>{upsertMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "保存"}</Button>
-              <Button size="sm" variant="outline" onClick={() => testMutation.mutate({ channel: "email" })} disabled={testMutation.isPending || !email.emailTo.trim() || !resend?.configured} title={!resend?.configured ? "先配置 Resend" : "发送测试邮件"}>
-                {testMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              <Button size="sm" className="flex-1" onClick={saveEmail} disabled={saveEmailM.isPending || !recipient.trim()} title={!recipient.trim() ? "请先填写收件邮箱(停用邮件请用监控页的实时推送总开关)" : undefined}>{saveEmailM.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "保存"}</Button>
+              <Button size="sm" variant="outline" onClick={() => testEmailM.mutate()} disabled={testEmailM.isPending || !emailCfg?.configured || !emailCfg?.recipient}
+                title={!emailCfg?.configured ? "先保存 Resend key" : !emailCfg?.recipient ? "先保存收件邮箱" : "发送测试邮件"}>
+                {testEmailM.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               </Button>
             </div>
           </CardContent>
